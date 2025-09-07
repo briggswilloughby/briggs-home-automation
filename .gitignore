@@ -1,0 +1,18 @@
+﻿# Home Assistant internals and secrets
+secrets.yaml
+.secrets.yaml
+.storage/
+.cloud/
+home-assistant_v2.db
+*.db
+*.db-shm
+*.db-wal
+.backups/
+backups/
+media/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
