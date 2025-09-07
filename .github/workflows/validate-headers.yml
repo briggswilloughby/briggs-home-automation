@@ -1,0 +1,19 @@
+﻿name: Validate YAML headers
+on:
+  pull_request:
+    paths:
+      - "home-assistant/packages/**/*.yaml"
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify headers
+        shell: bash
+        run: |
+          missing=$(grep -L "PACKAGE: .*" -R home-assistant/packages || true)
+          if [ -n "$missing" ]; then
+            echo "Files missing header:"
+            echo "$missing"
+            exit 1
+          fi
