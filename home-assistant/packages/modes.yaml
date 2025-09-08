@@ -1,0 +1,97 @@
+# =============================================================================
+# PACKAGE: modes.yaml
+# PURPOSE: Cross-domain “modes” coordinating Shelly shelves + Sonos
+# DEPENDS ON:
+#   - shelly_shelves.yaml scripts (shelf_set_mode_*, seahawks_touchdown, shelves_*)
+#   - sonos.yaml scripts (sonos_group_with, sonos_announce, etc.)
+# NOTES:
+#   - Clamp calls removed from mode_tv / mode_chill per request.
+#   - Night clamp automation is present but disabled.
+# =============================================================================
+
+script:
+
+  mode_tv:
+    alias: "Mode - TV"
+    mode: restart
+    sequence:
+      - service: script.shelf_set_mode_tv
+      # Optionally also group Kitchen:
+      # - service: script.sonos_group_with
+      #   data:
+      #     coordinator: media_player.family_room
+      #     members: [media_player.kitchen]
+      # - service: media_player.volume_set
+      #   target: { entity_id: media_player.kitchen }
+      #   data: { volume_level: 0.30 }
+
+  mode_chill:
+    alias: "Mode - Chill"
+    mode: restart
+    sequence:
+      - service: script.shelf_set_mode_chill
+      # (No clamping)
+
+  mode_party:
+    alias: "Mode - Party"
+    mode: restart
+    sequence:
+      - service: script.shelf_set_mode_party
+      # Optionally group all Sonos:
+      # - service: script.tv_whole_house
+
+  mode_game_day:
+    alias: "Mode - Game Day"
+    mode: restart
+    sequence:
+      - service: script.shelf_set_mode_game_day
+
+  seahawks_touchdown_combo:
+    alias: "Combo - Seahawks Touchdown"
+    mode: single
+    sequence:
+      - service: script.seahawks_touchdown
+      # Optionally:
+      # - service: script.sonos_announce
+      #   data:
+      #     players: [media_player.family_room]
+      #     message: "Touchdown Seahawks!"
+      #     volume: 0.35
+
+  doorbell_flash_combo:
+    alias: "Combo - Doorbell Flash"
+    mode: restart
+    sequence:
+      - service: script.shelves_doorbell_flash
+      # Optionally:
+      # - service: script.sonos_announce
+      #   data:
+      #     players: [media_player.family_room]
+      #     message: "Someone is at the front door."
+      #     volume: 0.25
+
+automation:
+  - alias: Sonos - Night Clamp at 10:30 PM
+    enabled: false
+    trigger:
+      - platform: time
+        at: "22:30:00"
+    action:
+      - service: script.sonos_clamp_volume
+        data:
+          player: media_player.family_room
+          max_level: 0.18
+      - service: script.sonos_clamp_volume
+        data:
+          player: media_player.kitchen
+          max_level: 0.18
+
+  - alias: Sonos - Morning Unclamp at 7:00 AM
+    trigger:
+      - platform: time
+        at: "07:00:00"
+    action:
+      - service: script.sonos_raise_if_below
+        data: { player: media_player.family_room, min_level: 0.25 }
+      - service: script.sonos_raise_if_below
+        data: { player: media_player.kitchen,     min_level: 0.25 }

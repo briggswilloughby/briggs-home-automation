@@ -1,0 +1,363 @@
+# =============================================================================
+# PACKAGE: sonos.yaml
+# PURPOSE: Sonos helpers and presets (Family Room, Kitchen, Bar, Patio, Roam2)
+# NOTES:
+#   - YAML uses `service:` for calls (UI label "Actions" is just naming).
+#   - Grouping now uses generic media_player.join/unjoin (current HA behavior).
+#   - Snapshots/restores still use sonos.snapshot/sonos.restore with groups.
+#   - Move: promote DEST to coordinator, unjoin SOURCE, then join SOURCE→DEST.
+# =============================================================================
+
+script:
+
+  # ---------- GENERIC HELPERS ----------
+  sonos_snapshot:
+    alias: "Sonos - Snapshot"
+    mode: restart
+    fields:
+      players:
+        description: One or more media_player.*
+    sequence:
+      - variables:
+          plist: >
+            {{ players if players is iterable and players is not string else [players] }}
+      - service: sonos.snapshot
+        target: { entity_id: "{{ plist }}" }
+        data: { with_group: true }
+
+  sonos_restore_snapshot:
+    alias: "Sonos - Restore Snapshot"
+    mode: restart
+    fields:
+      players:
+        description: One or more media_player.*
+    sequence:
+      - variables:
+          plist: >
+            {{ players if players is iterable and players is not string else [players] }}
+      - service: sonos.restore
+        target: { entity_id: "{{ plist }}" }
+        data: { with_group: true }
+
+  sonos_play:
+    alias: "Sonos - Play Favorite/URI"
+    mode: restart
+    fields:
+      player:
+        example: media_player.family_room
+      favorite:
+        description: Sonos favorite name (optional)
+      uri:
+        description: Direct stream/Spotify URI (optional)
+      volume:
+        description: Optional volume_level 0.0..1.0
+    sequence:
+      - choose:
+          - conditions: "{{ volume is defined }}"
+            sequence:
+              - service: media_player.volume_set
+                target: { entity_id: "{{ player }}" }
+                data: { volume_level: "{{ volume|float }}" }
+      - choose:
+          - conditions: "{{ favorite is defined and favorite|length > 0 }}"
+            sequence:
+              - service: media_player.select_source
+                target: { entity_id: "{{ player }}" }
+                data: { source: "{{ favorite }}" }
+        default:
+          - choose:
+              - conditions: "{{ uri is defined and uri|length > 0 }}"
+                sequence:
+                  - service: media_player.play_media
+                    target: { entity_id: "{{ player }}" }
+                    data:
+                      media_content_id: "{{ uri }}"
+                      media_content_type: music
+
+  sonos_relative_volume:
+    alias: "Sonos - Relative Volume"
+    mode: single
+    fields:
+      player:
+        example: media_player.family_room
+      delta:
+        description: "+/- change (0.07 or 7 for 7%)"
+    sequence:
+      - variables:
+          cur: "{{ state_attr(player,'volume_level')|float(0.3) }}"
+          step: >
+            {% set d = delta %}
+            {% if d is number %}{{ d if d <= 1 else (d/100) }}
+            {% else %}{{ (d|float(7))/100 }}{% endif %}
+          newv: "{{ [1, [0, cur + step]|max ]|min }}"
+      - service: media_player.volume_set
+        target: { entity_id: "{{ player }}" }
+        data: { volume_level: "{{ newv }}" }
+
+  sonos_move:
+    alias: "Sonos - Move Playback"
+    mode: restart
+    fields:
+      source:
+        description: media_player.* (current playback)
+      dest:
+        description: media_player.* (destination; becomes coordinator)
+      settle_ms:
+        description: Small settle delay (ms) between steps
+        default: 400
+    sequence:
+      - variables:
+          _source: "{{ source }}"
+          _dest: "{{ dest }}"
+          _settle: "{{ (settle_ms | default(400) | int) / 1000 }}"
+      # 1) Promote DEST to its own coordinator (safe if already solo)
+      - service: media_player.unjoin
+        target: { entity_id: "{{ _dest }}" }
+      - delay: { seconds: "{{ _settle }}" }
+      # 2) Unjoin SOURCE from any prior group
+      - service: media_player.unjoin
+        target: { entity_id: "{{ _source }}" }
+      - delay: { seconds: "{{ _settle }}" }
+      # 3) Join SOURCE into DEST's group (DEST remains coordinator)
+      - service: media_player.join
+        target: { entity_id: "{{ _dest }}" }     # coordinator/master
+        data:
+          group_members:
+            - "{{ _source }}"                    # member to add
+      - wait_template: >
+          {{ state_attr(_dest, 'group_members') is defined
+             and _source in state_attr(_dest, 'group_members') }}
+        timeout: "00:00:03"
+        continue_on_timeout: true
+
+  sonos_group_with:
+    alias: "Sonos - Group With"
+    mode: restart
+    fields:
+      coordinator:
+        example: media_player.family_room
+      members:
+        description: List of media_player.* to add
+    sequence:
+      - variables:
+          add_list: >
+            {{ members if members is iterable and members is not string else [members] }}
+      - service: media_player.join
+        target: { entity_id: "{{ coordinator }}" }   # coordinator/master
+        data:
+          group_members: "{{ add_list }}"            # members to add
+      - wait_template: >
+          {{ state_attr(coordinator, 'group_members') is defined
+             and (add_list | select('in', state_attr(coordinator, 'group_members')) | list | length)
+                 == (add_list | length) }}
+        timeout: "00:00:03"
+        continue_on_timeout: true
+
+  sonos_ungroup_all:
+    alias: "Sonos - Ungroup All"
+    mode: parallel
+    sequence:
+      - service: media_player.unjoin
+        target:
+          entity_id:
+            - media_player.family_room
+            - media_player.kitchen
+            - media_player.bar
+            - media_player.patio
+            - media_player.roam2
+
+  sonos_clamp_volume:
+    alias: "Sonos - Clamp Volume"
+    mode: parallel
+    fields:
+      player:
+        example: media_player.family_room
+      max_level:
+        example: 0.20
+    sequence:
+      - variables:
+          cur: "{{ state_attr(player, 'volume_level') | float(0) }}"
+          maxv: "{{ max_level | float(0.2) }}"
+          newv: "{{ [cur, maxv] | min }}"
+      - choose:
+          - conditions: "{{ newv < cur }}"
+            sequence:
+              - service: media_player.volume_set
+                target: { entity_id: "{{ player }}" }
+                data: { volume_level: "{{ newv }}" }
+
+  sonos_mute_all:
+    alias: "Sonos - Mute All"
+    mode: parallel
+    sequence:
+      - service: media_player.volume_mute
+        target:
+          entity_id:
+            - media_player.family_room
+            - media_player.kitchen
+            - media_player.bar
+            - media_player.patio
+            - media_player.roam2
+        data: { is_volume_muted: true }
+
+  sonos_unmute_all:
+    alias: "Sonos - Unmute All"
+    mode: parallel
+    sequence:
+      - service: media_player.volume_mute
+        target:
+          entity_id:
+            - media_player.family_room
+            - media_player.kitchen
+            - media_player.bar
+            - media_player.patio
+            - media_player.roam2
+        data: { is_volume_muted: false }
+
+  sonos_announce:
+    alias: "Sonos - Announce"
+    mode: restart
+    fields:
+      players:
+        description: One or more media_player.*
+      message:
+        description: Text to speak
+      volume:
+        description: Optional temp volume (0.0..1.0)
+      tts_service:
+        description: TTS service (default tts.google_translate_say)
+    sequence:
+      - variables:
+          plist: >
+            {{ players if players is iterable and players is not string else [players] }}
+          tts: "{{ tts_service if tts_service is defined else 'tts.google_translate_say' }}"
+      - service: script.sonos_snapshot
+        data: { players: "{{ plist }}" }
+      - choose:
+          - conditions: "{{ volume is defined }}"
+            sequence:
+              - service: media_player.volume_set
+                target: { entity_id: "{{ plist }}" }
+                data: { volume_level: "{{ volume|float }}" }
+      - service: "{{ tts }}"
+        data:
+          entity_id: "{{ plist[0] }}"
+          message: "{{ message }}"
+      - delay: "00:00:04"
+      - service: script.sonos_restore_snapshot
+        data: { players: "{{ plist }}" }
+
+  # ---------- GROUP PRESETS / TRANSFERS ----------
+  tv_plus_kitchen:
+    alias: "TV and Kitchen"
+    mode: single
+    sequence:
+      - service: script.sonos_group_with
+        data:
+          coordinator: media_player.family_room
+          members: [media_player.kitchen]
+      - service: media_player.volume_set
+        target: { entity_id: media_player.kitchen }
+        data: { volume_level: 0.15 }
+
+  tv_plus_bar:
+    alias: "TV and Bar"
+    mode: single
+    sequence:
+      - service: script.sonos_group_with
+        data:
+          coordinator: media_player.family_room
+          members: [media_player.bar]
+
+  tv_plus_patio:
+    alias: "TV and Patio"
+    mode: single
+    sequence:
+      - service: script.sonos_group_with
+        data:
+          coordinator: media_player.family_room
+          members: [media_player.patio]
+
+  tv_whole_house:
+    alias: "TV Whole House"
+    mode: single
+    sequence:
+      - service: script.sonos_group_with
+        data:
+          coordinator: media_player.family_room
+          members:
+            - media_player.kitchen
+            - media_player.bar
+            - media_player.patio
+            - media_player.roam2
+
+  move_tv_to_kitchen:
+    alias: "Move TV to Kitchen"
+    mode: single
+    sequence:
+      - service: script.sonos_move
+        data: { source: media_player.family_room, dest: media_player.kitchen }
+
+  move_kitchen_to_tv:
+    alias: "Move Kitchen to TV"
+    mode: single
+    sequence:
+      - service: script.sonos_move
+        data: { source: media_player.kitchen, dest: media_player.family_room }
+
+  move_tv_to_bar:
+    alias: "Move TV to Bar"
+    mode: single
+    sequence:
+      - service: script.sonos_move
+        data: { source: media_player.family_room, dest: media_player.bar }
+
+  move_bar_to_tv:
+    alias: "Move Bar to TV"
+    mode: single
+    sequence:
+      - service: script.sonos_move
+        data: { source: media_player.bar, dest: media_player.family_room }
+
+  move_tv_to_patio:
+    alias: "Move TV to Patio"
+    mode: single
+    sequence:
+      - service: script.sonos_move
+        data: { source: media_player.family_room, dest: media_player.patio }
+
+  move_patio_to_tv:
+    alias: "Move Patio to TV"
+    mode: single
+    sequence:
+      - service: script.sonos_move
+        data: { source: media_player.patio, dest: media_player.family_room }
+
+  # ---------- UNJOIN ----------
+  unjoin_kitchen:
+    alias: "Unjoin Kitchen"
+    mode: single
+    sequence:
+      - service: media_player.unjoin
+        target: { entity_id: media_player.kitchen }
+
+  unjoin_bar:
+    alias: "Unjoin Bar"
+    mode: single
+    sequence:
+      - service: media_player.unjoin
+        target: { entity_id: media_player.bar }
+
+  unjoin_patio:
+    alias: "Unjoin Patio"
+    mode: single
+    sequence:
+      - service: media_player.unjoin
+        target: { entity_id: media_player.patio }
+
+  unjoin_roam2:
+    alias: "Unjoin Roam2"
+    mode: single
+    sequence:
+      - service: media_player.unjoin
+        target: { entity_id: media_player.roam2 }

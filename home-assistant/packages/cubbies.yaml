@@ -1,0 +1,124 @@
+# =============================================================================
+# PACKAGE: cubbies.yaml
+# PURPOSE: Provide "Cubbies ..." aliases/wrappers for shelves lights & modes
+#
+# DEPENDS ON:
+#   - Group entities created in shelly_shelves.yaml:
+#       light.cubbies_all, light.cubbies_odd, light.cubbies_even
+#   - Shelf scripts in shelly_shelves.yaml:
+#       script.shelf_set_mode_tv / chill / party / game_day
+#       script.shelves_brightness_step / shelves_brighter / shelves_dimmer
+#       script.shelves_next_mode / shelves_prev_mode
+# NOTES:
+#   - All steps use `service:` (canonical).
+# =============================================================================
+
+script:
+
+  # ---- Cubbies Mode wrappers ----
+  cubbies_set_mode_tv:
+    alias: Cubbies - Set Mode TV
+    mode: restart
+    sequence:
+      - service: script.shelf_set_mode_tv
+
+  cubbies_set_mode_chill:
+    alias: Cubbies - Set Mode Chill
+    mode: restart
+    sequence:
+      - service: script.shelf_set_mode_chill
+
+  cubbies_set_mode_party:
+    alias: Cubbies - Set Mode Party
+    mode: restart
+    sequence:
+      - service: script.shelf_set_mode_party
+
+  cubbies_set_mode_game_day:
+    alias: Cubbies - Set Mode Game Day
+    mode: restart
+    sequence:
+      - service: script.shelf_set_mode_game_day
+
+  # ---- Cubbies brightness wrappers ----
+  cubbies_brighter:
+    alias: Cubbies Brighter
+    mode: single
+    sequence:
+      - service: script.shelves_brighter
+
+  cubbies_dimmer:
+    alias: Cubbies Dimmer
+    mode: single
+    sequence:
+      - service: script.shelves_dimmer
+
+  cubbies_brightness_step:
+    alias: Cubbies - Brightness Step
+    mode: single
+    fields:
+      delta:
+        description: "+/- percentage (e.g. 10 or -10)"
+        example: 10
+    sequence:
+      - service: script.shelves_brightness_step
+        data:
+          delta: "{{ delta|int }}"
+
+  # ---- Cubbies mode cyclers ----
+  cubbies_next_mode:
+    alias: Cubbies - Next Mode
+    mode: single
+    sequence:
+      - service: script.shelves_next_mode
+
+  cubbies_prev_mode:
+    alias: Cubbies - Previous Mode
+    mode: single
+    sequence:
+      - service: script.shelves_prev_mode
+
+  # ---- Simple on/off/toggle helpers (GA/Pico friendly) ----
+  cubbies_on:
+    alias: Cubbies - On
+    mode: restart
+    sequence:
+      - service: light.turn_on
+        target: { entity_id: light.cubbies_all }
+
+  cubbies_off:
+    alias: Cubbies - Off
+    mode: restart
+    sequence:
+      - service: light.turn_off
+        target: { entity_id: light.cubbies_all }
+
+  cubbies_toggle:
+    alias: Cubbies - Toggle
+    mode: restart
+    sequence:
+      - service: light.toggle
+        target: { entity_id: light.cubbies_all }
+
+  # ---- (Optional) direct color helpers targeting the Cubbies group ----
+  cubbies_set_blue_dim:
+    alias: Cubbies - Blue Dim
+    mode: restart
+    sequence:
+      - service: light.turn_on
+        target: { entity_id: light.cubbies_all }
+        data:
+          rgbw_color: [0, 120, 255, 0]
+          brightness_pct: 8
+          transition: 0.3
+
+  cubbies_set_warm_white:
+    alias: Cubbies - Warm White
+    mode: restart
+    sequence:
+      - service: light.turn_on
+        target: { entity_id: light.cubbies_all }
+        data:
+          rgbw_color: [0, 0, 0, 255]
+          brightness_pct: 10
+          transition: 0.5

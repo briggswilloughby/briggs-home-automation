@@ -1,0 +1,371 @@
+# /config/packages/shelly_shelves.yaml
+# Shelly Shelves: groups, modes, brightness step, robust flashers (scene-based restore)
+
+#####################
+# 1) LIGHT GROUPS
+#####################
+light:
+  - platform: group
+    name: Shelves All
+    unique_id: shelves_all
+    entities:
+      - light.shelf_1
+      - light.shelf_2
+      - light.shelf_3
+      - light.shelf_4
+
+  - platform: group
+    name: Shelves Odd
+    unique_id: shelves_odd
+    entities:
+      - light.shelf_1
+      - light.shelf_3
+
+  - platform: group
+    name: Shelves Even
+    unique_id: shelves_even
+    entities:
+      - light.shelf_2
+      - light.shelf_4
+
+  # (Optional) Provide “Cubbies …” aliases so other scripts can use either term
+  - platform: group
+    name: Cubbies All
+    unique_id: cubbies_all
+    entities:
+      - light.shelf_1
+      - light.shelf_2
+      - light.shelf_3
+      - light.shelf_4
+
+  - platform: group
+    name: Cubbies Odd
+    unique_id: cubbies_odd
+    entities:
+      - light.shelf_1
+      - light.shelf_3
+
+  - platform: group
+    name: Cubbies Even
+    unique_id: cubbies_even
+    entities:
+      - light.shelf_2
+      - light.shelf_4
+
+#########################
+# 2) HELPERS
+#########################
+input_select:
+  shelf_mode:
+    name: Shelf Mode
+    options: [tv, chill, party, game_day]
+    initial: tv
+
+#########################
+# 3) SCRIPTS
+#########################
+script:
+
+  # ---- MODES (use per-shelf fanout helper for reliability) ----
+  shelf_set_mode_tv:
+    alias: Shelves - Set Mode TV
+    mode: restart
+    sequence:
+      - service: script.shelves_apply
+        data:
+          group: light.shelves_all
+          rgbw: [0, 120, 255, 0]   # RGBW
+          bright: 8
+          trans: 0.3
+      - service: input_select.select_option
+        target: { entity_id: input_select.shelf_mode }
+        data: { option: tv }
+
+  shelf_set_mode_chill:
+    alias: Shelves - Set Mode Chill
+    mode: restart
+    sequence:
+      - service: script.shelves_apply
+        data:
+          group: light.shelves_all
+          rgbw: [0, 0, 0, 255]
+          bright: 10
+          trans: 0.5
+      - service: input_select.select_option
+        target: { entity_id: input_select.shelf_mode }
+        data: { option: chill }
+
+  shelf_set_mode_party:
+    alias: Shelves - Set Mode Party
+    mode: restart
+    sequence:
+      - service: script.shelves_apply
+        data:
+          group: light.shelves_all
+          rgbw: [255, 0, 255, 0]
+          bright: 60
+          trans: 0.2
+      - service: input_select.select_option
+        target: { entity_id: input_select.shelf_mode }
+        data: { option: party }
+
+  shelf_set_mode_game_day:
+    alias: Shelves - Set Mode Game Day
+    mode: restart
+    sequence:
+      - service: script.shelves_apply
+        data:
+          group: light.shelves_odd
+          rgbw: [0, 60, 255, 0]
+          bright: 25
+          trans: 0
+      - service: script.shelves_apply
+        data:
+          group: light.shelves_even
+          rgbw: [0, 255, 0, 0]
+          bright: 25
+          trans: 0
+      - service: input_select.select_option
+        target: { entity_id: input_select.shelf_mode }
+        data: { option: game_day }
+
+  # ---- Mode cyclers (convenient for Pico) ----
+  shelves_next_mode:
+    alias: Shelves - Next Mode
+    mode: single
+    sequence:
+      - variables:
+          order: ["tv","chill","party","game_day"]
+          cur: "{{ states('input_select.shelf_mode') }}"
+          idx: >-
+            {% set i = order.index(cur) if cur in order else -1 %}
+            {{ (i + 1) % order|length }}
+      - service: "script.shelf_set_mode_{{ order[idx] }}"
+
+  shelves_prev_mode:
+    alias: Shelves - Previous Mode
+    mode: single
+    sequence:
+      - variables:
+          order: ["tv","chill","party","game_day"]
+          cur: "{{ states('input_select.shelf_mode') }}"
+          idx: >-
+            {% set i = order.index(cur) if cur in order else 0 %}
+            {{ (i - 1) % order|length }}
+      - service: "script.shelf_set_mode_{{ order[idx] }}"
+
+  # ---- Brightness step (robust; uses brightness_step_pct) ----
+  shelves_brightness_step:
+    alias: Shelves - Brightness Step
+    fields:
+      delta:
+        description: "+/- percentage (e.g. 10 or -10)"
+        example: 10
+    sequence:
+      - service: light.turn_on
+        target: { entity_id: light.shelves_all }
+        data:
+          brightness_step_pct: "{{ delta | int }}"
+          transition: 0.15
+
+  shelves_brighter:
+    alias: "Shelves Brighter"
+    mode: single
+    sequence:
+      - service: script.shelves_brightness_step
+        data: { delta: 10 }
+
+  shelves_dimmer:
+    alias: "Shelves Dimmer"
+    mode: single
+    sequence:
+      - service: script.shelves_brightness_step
+        data: { delta: -10 }
+
+  # ---- Seahawks Touchdown (scene snapshot → flash → restore) ----
+  seahawks_touchdown:
+    alias: Seahawks Touchdown
+    mode: single
+    sequence:
+      # Snapshot all shelves into a temporary scene
+      - service: scene.create
+        data:
+          scene_id: shelves_before_touchdown
+          snapshot_entities:
+            - light.shelf_1
+            - light.shelf_2
+            - light.shelf_3
+            - light.shelf_4
+
+      # Flash alt blue/green @100%
+      - variables:
+          cycles: 10
+          on_time_ms: 500
+      - repeat:
+          count: "{{ cycles }}"
+          sequence:
+            - service: light.turn_on
+              target: { entity_id: light.shelves_odd }
+              data: { rgbw_color: [0, 255, 0, 0], brightness_pct: 100, transition: 0 }
+            - service: light.turn_on
+              target: { entity_id: light.shelves_even }
+              data: { rgbw_color: [0, 60, 255, 0], brightness_pct: 100, transition: 0 }
+            - delay: { milliseconds: "{{ on_time_ms }}" }
+            - service: light.turn_on
+              target: { entity_id: light.shelves_odd }
+              data: { rgbw_color: [0, 60, 255, 0], brightness_pct: 100, transition: 0 }
+            - service: light.turn_on
+              target: { entity_id: light.shelves_even }
+              data: { rgbw_color: [0, 255, 0, 0], brightness_pct: 100, transition: 0 }
+            - delay: { milliseconds: "{{ on_time_ms }}" }
+
+      # Let Shellys settle, then restore the scene
+      - delay: { milliseconds: 300 }
+      - service: scene.turn_on
+        target: { entity_id: scene.shelves_before_touchdown }
+
+      # Light nudge to ensure state is reported back
+      - delay: { milliseconds: 250 }
+      - repeat:
+          for_each:
+            - light.shelf_1
+            - light.shelf_2
+            - light.shelf_3
+            - light.shelf_4
+          sequence:
+            - service: light.turn_on
+              target: { entity_id: "{{ repeat.item }}" }
+              data:
+                transition: 0
+
+  # ---- Doorbell Flash (scene snapshot → red x3 → restore) ----
+  shelves_doorbell_flash:
+    alias: Shelves - Doorbell Flash
+    mode: restart
+    sequence:
+      - condition: template
+        value_template: "{{ not is_state('script.seahawks_touchdown','on') }}"
+
+      # Snapshot into a temporary scene
+      - service: scene.create
+        data:
+          scene_id: shelves_before_doorbell
+          snapshot_entities:
+            - light.shelf_1
+            - light.shelf_2
+            - light.shelf_3
+            - light.shelf_4
+
+      # Flash red x3 @50%
+      - variables:
+          repeats: 3
+          on_time_ms: 250
+      - repeat:
+          count: "{{ repeats }}"
+          sequence:
+            - service: light.turn_on
+              target: { entity_id: light.shelves_all }
+              data: { rgbw_color: [255, 0, 0, 0], brightness_pct: 50, transition: 0 }
+            - delay: { milliseconds: "{{ on_time_ms }}" }
+            - service: light.turn_off
+              target: { entity_id: light.shelves_all }
+            - delay: { milliseconds: "{{ on_time_ms }}" }
+
+      # Settle, then restore the scene
+      - delay: { milliseconds: 300 }
+      - service: scene.turn_on
+        target: { entity_id: scene.shelves_before_doorbell }
+
+      # Light nudge to ensure state is reported back
+      - delay: { milliseconds: 250 }
+      - repeat:
+          for_each:
+            - light.shelf_1
+            - light.shelf_2
+            - light.shelf_3
+            - light.shelf_4
+          sequence:
+            - service: light.turn_on
+              target: { entity_id: "{{ repeat.item }}" }
+              data:
+                transition: 0
+
+  # ---- (Optional) Shelf 2 – Probe Restore (single-light test) ----
+  shelf2_probe_restore:
+    alias: Shelf 2 – Probe Restore
+    mode: single
+    sequence:
+      - service: scene.create
+        data:
+          scene_id: shelf2_before_probe
+          snapshot_entities:
+            - light.shelf_2
+
+      - service: light.turn_on
+        target: { entity_id: light.shelf_2 }
+        data: { rgbw_color: [0,255,0,0], brightness_pct: 100, transition: 0 }
+      - delay: "00:00:01"
+
+      - service: scene.turn_on
+        target: { entity_id: scene.shelf2_before_probe }
+
+      - delay: { milliseconds: 500 }
+      - service: persistent_notification.create
+        data:
+          title: "Shelf 2 Probe Result"
+          message: >
+            Final: state={{ states('light.shelf_2') }},
+            bri={{ state_attr('light.shelf_2','brightness') }},
+            rgbw={{ state_attr('light.shelf_2','rgbw_color') }}
+
+  # ---- Helper: per-shelf fanout for reliable color/brightness application ----
+  shelves_apply:
+    alias: Shelves - Apply Color/Brightness (per-shelf fanout)
+    mode: parallel
+    fields:
+      group:
+        description: "Group entity_id to apply to (default light.shelves_all)"
+      rgbw:
+        description: "[R,G,B,W] 0-255"
+      bright:
+        description: "brightness_pct 1-100"
+      trans:
+        description: "transition seconds (float)"
+    sequence:
+      - variables:
+          grp: "{{ group | default('light.shelves_all') }}"
+          targets: "{{ expand(grp) | map(attribute='entity_id') | list }}"
+          r: "{{ rgbw[0] | int }}"
+          g: "{{ rgbw[1] | int }}"
+          b: "{{ rgbw[2] | int }}"
+          w: "{{ rgbw[3] | int }}"
+          bp: "{{ bright | int }}"
+          tr: "{{ trans | float(0) }}"
+      - repeat:
+          for_each: "{{ targets }}"
+          sequence:
+            - service: light.turn_on
+              target: { entity_id: "{{ repeat.item }}" }
+              data:
+                rgbw_color: [ "{{ r }}", "{{ g }}", "{{ b }}", "{{ w }}" ]
+                brightness_pct: "{{ bp }}"
+                transition: "{{ tr }}"
+
+#########################
+# 4) OPTIONAL AUTOMATIONS
+#########################
+automation:
+  - alias: Shelves – Reapply Last Mode on Start
+    mode: single
+    trigger: [{ platform: homeassistant, event: start }]
+    action:
+      - choose:
+          - conditions: "{{ states('input_select.shelf_mode') == 'tv' }}"
+            sequence: [{ service: script.shelf_set_mode_tv }]
+          - conditions: "{{ states('input_select.shelf_mode') == 'chill' }}"
+            sequence: [{ service: script.shelf_set_mode_chill }]
+          - conditions: "{{ states('input_select.shelf_mode') == 'party' }}"
+            sequence: [{ service: script.shelf_set_mode_party }]
+          - conditions: "{{ states('input_select.shelf_mode') == 'game_day' }}"
+            sequence: [{ service: script.shelf_set_mode_game_day }]
+
