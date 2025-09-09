@@ -16,3 +16,8 @@ media/
 Thumbs.db
 .vscode/
 .idea/
+
+# SSH keys
+id_ed25519*
+*.pub
+githubssh*
