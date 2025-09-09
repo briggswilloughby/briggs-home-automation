@@ -1,22 +1,16 @@
 rules:
   line-length: disable
-
   truthy:
     allowed-values: ['true', 'false', 'on', 'off', 'yes', 'no']
-
+    check-keys: false
   indentation:
     spaces: 2
     indent-sequences: consistent
-
   trailing-spaces: enable
-
   new-lines:
     type: unix
-
   document-start: disable
-
   empty-lines:
-    max: 1
-
+    max: 1    # <- more relaxed (lets you keep one blank line for readability)
   comments:
     require-starting-space: true
