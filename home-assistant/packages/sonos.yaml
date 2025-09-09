@@ -7,7 +7,7 @@
 #   - Snapshots/restores still use sonos.snapshot/sonos.restore with groups.
 #   - Move: promote DEST to coordinator, unjoin SOURCE, then join SOURCE→DEST.
 # =============================================================================
-#testing again
+#testing 3rd
 script:
 
   # ---------- GENERIC HELPERS ----------
