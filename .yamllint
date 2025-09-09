@@ -16,7 +16,7 @@ rules:
   document-start: disable
 
   empty-lines:
-    max: 2
+    max: 1
 
   comments:
     require-starting-space: true
