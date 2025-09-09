@@ -1,19 +1,22 @@
----
-extends: default
-
 rules:
   line-length: disable
+
   truthy:
     allowed-values: ['true', 'false', 'on', 'off', 'yes', 'no']
+
   indentation:
-    indent: 2
+    spaces: 2
     indent-sequences: consistent
+
   trailing-spaces: enable
+
   new-lines:
     type: unix
+
   document-start: disable
+
   empty-lines:
     max: 2
+
   comments:
     require-starting-space: true
-#comment
