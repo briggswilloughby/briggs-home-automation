@@ -1,19 +1,54 @@
-﻿name: Validate YAML headers
+﻿name: CI – YAML & Home Assistant config check
+
 on:
+  push:
+    paths:
+      - "home-assistant/**/*.yaml"
+      - ".yamllint"
+      - ".github/workflows/validate-ha.yml"
   pull_request:
     paths:
-      - "home-assistant/packages/**/*.yaml"
+      - "home-assistant/**/*.yaml"
+      - ".yamllint"
+      - ".github/workflows/validate-ha.yml"
+
 jobs:
-  check:
+  yamllint:
+    name: Lint YAML
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Verify headers
-        shell: bash
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install yamllint
         run: |
-          missing=$(grep -L "PACKAGE: .*" -R home-assistant/packages || true)
-          if [ -n "$missing" ]; then
-            echo "Files missing header:"
-            echo "$missing"
-            exit 1
-          fi
+          python3 -m pip install --upgrade pip
+          python3 -m pip install yamllint
+
+      - name: Run yamllint (home-assistant dir)
+        run: |
+          yamllint -c .yamllint home-assistant
+
+  ha_check_config:
+    name: Home Assistant check_config
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build a minimal HA config using your packages
+        run: |
+          mkdir -p ci-config
+          cp -r home-assistant/packages ci-config/
+          cat > ci-config/configuration.yaml <<'YAML'
+          homeassistant:
+            name: CI
+          packages: !include_dir_named packages
+          YAML
+
+      - name: Run check_config in Home Assistant container
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/ci-config:/config" \
+            homeassistant/home-assistant:stable \
+            python -m homeassistant --config /config --script check_config
