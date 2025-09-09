@@ -258,7 +258,7 @@ script:
           members: [media_player.kitchen]
       - service: media_player.volume_set
         target: { entity_id: media_player.kitchen }
-        data: { volume_level: 0.15 }
+        data: { volume_level: 0.10 }
 
   tv_plus_bar:
     alias: "TV and Bar"

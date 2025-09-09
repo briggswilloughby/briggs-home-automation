@@ -24,3 +24,19 @@
 ## Output quality bar
 - Provide minimal diff OR full replacement file (your call), but always runnable.
 - Include acceptance criteria + quick test steps when relevant.
+
+## Retrieval rules
+- Always read the **latest** committed file from `main` via raw.githubusercontent.com before proposing edits.
+- If the user says “use <commit>”, use that exact commit SHA in the raw URL.
+- Never rely on stale chat snippets if a canonical file exists in the repo.
+
+## Output rules
+- Produce **complete, file-ready YAML** (not diffs).
+- Preserve headers & comments; keep idempotent behavior.
+- Respect `.yamllint` (2-space indents; allow up to one blank line) and HA `check_config`.
+
+## Pre-flight checklist (Implementation)
+- Confirm file paths and entity ids exist.
+- Call out cross-file impacts (helpers, blueprints, scenes, secrets).
+- Note rate limits or integration quirks (Sonos snapshots, Ring throttling, Shelly availability, Lutron certs).
+- Suggest tests + rollback steps.
