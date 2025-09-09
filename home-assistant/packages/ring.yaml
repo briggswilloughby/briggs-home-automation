@@ -64,4 +64,3 @@ automation:
       - delay: "00:00:00.15"     # tiny stagger so Shellys start before audio
       - service: script.sonos_doorbell_chime
       - delay: "00:00:04"        # absorb duplicates
-
