@@ -1,11 +1,12 @@
 # =============================================================================
 # PACKAGE: sonos.yaml
 # PURPOSE: Sonos helpers and presets (Family Room, Kitchen, Bar, Patio, Roam2)
-# NOTES:
+# DESIGN NOTES:
 #   - YAML uses `service:` for calls (UI label "Actions" is just naming).
-#   - Grouping now uses generic media_player.join/unjoin (current HA behavior).
-#   - Snapshots/restores still use sonos.snapshot/sonos.restore with groups.
-#   - Move: promote DEST to coordinator, unjoin SOURCE, then join SOURCE→DEST.
+#   - Grouping uses generic media_player.join/unjoin (current HA behavior).
+#   - Snapshot/restore helpers always pass with_group: true.
+#   - Move: promote DEST to coordinator, add SOURCE, then unjoin SOURCE;
+#     optional group_with (single or list).
 # =============================================================================
 
 script:
@@ -102,6 +103,8 @@ script:
         description: media_player.* (current playback)
       dest:
         description: media_player.* (destination; becomes coordinator)
+      group_with:
+        description: Optional media_player.* or list to join after move
       settle_ms:
         description: Small settle delay (ms) between steps
         default: 400
@@ -109,26 +112,44 @@ script:
       - variables:
           _source: "{{ source }}"
           _dest: "{{ dest }}"
+          _group: >
+            {% set gw = group_with | default([]) %}
+            {% set gl = gw if gw is iterable and gw is not string else [gw] %}
+            {{ gl | reject('eq', source) | list }}
           _settle: "{{ (settle_ms | default(400) | int) / 1000 }}"
       # 1) Promote DEST to its own coordinator (safe if already solo)
       - service: media_player.unjoin
         target: { entity_id: "{{ _dest }}" }
       - delay: { seconds: "{{ _settle }}" }
-      # 2) Unjoin SOURCE from any prior group
-      - service: media_player.unjoin
-        target: { entity_id: "{{ _source }}" }
-      - delay: { seconds: "{{ _settle }}" }
-      # 3) Join SOURCE into DEST's group (DEST remains coordinator)
+      # 2) Join SOURCE into DEST's group (DEST becomes playback)
       - service: media_player.join
         target: { entity_id: "{{ _dest }}" }     # coordinator/master
         data:
           group_members:
-            - "{{ _source }}"                    # member to add
+            - "{{ _source }}"
       - wait_template: >
           {{ state_attr(_dest, 'group_members') is defined
              and _source in state_attr(_dest, 'group_members') }}
         timeout: "00:00:03"
         continue_on_timeout: true
+      - delay: { seconds: "{{ _settle }}" }
+      # 3) Unjoin SOURCE from group (DEST keeps playback)
+      - service: media_player.unjoin
+        target: { entity_id: "{{ _source }}" }
+      - delay: { seconds: "{{ _settle }}" }
+      # 4) Optionally group DEST with extras
+      - choose:
+          - conditions: "{{ _group | length > 0 }}"
+            sequence:
+              - service: media_player.join
+                target: { entity_id: "{{ _dest }}" }
+                data: { group_members: "{{ _group }}" }
+              - wait_template: >
+                  {{ state_attr(_dest, 'group_members') is defined
+                     and (_group | select('in', state_attr(_dest, 'group_members')) | list | length)
+                         == (_group | length) }}
+                timeout: "00:00:03"
+                continue_on_timeout: true
 
   sonos_group_with:
     alias: "Sonos - Group With"
