@@ -7,6 +7,11 @@
 #   - Snapshots/restores still use sonos.snapshot/sonos.restore with groups.
 #   - Move: promote DEST to coordinator, unjoin SOURCE, then join SOURCE→DEST.
 # =============================================================================
+homeassistant:
+  customize:
+    script.move_tv_to_kitchen:
+      google_assistant: true
+      google_assistant_name: "TV in Kitchen"
 
 script:
 
@@ -292,11 +297,16 @@ script:
             - media_player.roam2
 
   move_tv_to_kitchen:
-    alias: "Move TV to Kitchen"
+    alias: "TV in Kitchen"
     mode: single
     sequence:
-      - service: script.sonos_move
-        data: { source: media_player.family_room, dest: media_player.kitchen }
+      - choose:
+          - conditions: "{{ state_attr('media_player.family_room', 'source') == 'TV' }}"
+            sequence:
+              - service: script.tv_plus_kitchen
+        default:
+          - service: script.sonos_move
+            data: { source: media_player.family_room, dest: media_player.kitchen }
 
   move_kitchen_to_tv:
     alias: "Move Kitchen to TV"
