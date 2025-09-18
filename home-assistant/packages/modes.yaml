@@ -1,13 +1,53 @@
 # =============================================================================
 # PACKAGE: modes.yaml
-# PURPOSE: Cross-domain “modes” coordinating Shelly shelves + Sonos
+# PURPOSE: Cross-domain "modes" coordinating Shelly shelves + Sonos
+# ISSUE: #TBD
 # DEPENDS ON:
 #   - shelly_shelves.yaml scripts (shelf_set_mode_*, seahawks_touchdown, shelves_*)
 #   - sonos.yaml scripts (sonos_group_with, sonos_announce, etc.)
+# TESTED ON: Home Assistant Core 2025.8.3 (Container), Sonos S2 16.2
 # NOTES:
 #   - Clamp calls removed from mode_tv / mode_chill per request.
 #   - Night clamp automation is present but disabled.
 # =============================================================================
+
+homeassistant:
+  customize:
+    script.mode_tv:
+      google_assistant: true
+      google_assistant_name: "Mode TV"
+      google_assistant_aliases:
+        - "Set house to TV mode"
+        - "TV lighting mode"
+        - "Activate TV scene"
+    script.mode_chill:
+      google_assistant: true
+      google_assistant_name: "Mode Chill"
+      google_assistant_aliases:
+        - "Set house to chill mode"
+        - "Chill lighting mode"
+        - "Activate relax scene"
+    script.mode_party:
+      google_assistant: true
+      google_assistant_name: "Mode Party"
+      google_assistant_aliases:
+        - "Set house to party mode"
+        - "Party lighting mode"
+        - "Activate party scene"
+    script.mode_game_day:
+      google_assistant: true
+      google_assistant_name: "Mode Game Day"
+      google_assistant_aliases:
+        - "Set house to game day"
+        - "Game day lighting mode"
+        - "Activate Seahawks mode"
+    script.seahawks_touchdown_combo:
+      google_assistant: true
+      google_assistant_name: "Seahawks Touchdown"
+      google_assistant_aliases:
+        - "Touchdown Seahawks"
+        - "Seahawks celebration"
+        - "Run the Seahawks touchdown"
 
 script:
 
@@ -85,13 +125,3 @@ automation:
         data:
           player: media_player.kitchen
           max_level: 0.18
-
-  - alias: Sonos - Morning Unclamp at 7:00 AM
-    trigger:
-      - platform: time
-        at: "07:00:00"
-    action:
-      - service: script.sonos_raise_if_below
-        data: { player: media_player.family_room, min_level: 0.25 }
-      - service: script.sonos_raise_if_below
-        data: { player: media_player.kitchen,     min_level: 0.25 }
