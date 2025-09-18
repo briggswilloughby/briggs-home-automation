@@ -7,8 +7,7 @@
 #   - sonos.yaml scripts (sonos_group_with, sonos_announce, etc.)
 # TESTED ON: Home Assistant Core 2025.8.3 (Container), Sonos S2 16.2
 # NOTES:
-#   - Clamp calls removed from mode_tv / mode_chill per request.
-#   - Night clamp automation is present but disabled.
+#   - Mode scripts keep Sonos grouping optional per room preference.
 # =============================================================================
 
 homeassistant:
@@ -109,19 +108,3 @@ script:
       #     players: [media_player.family_room]
       #     message: "Someone is at the front door."
       #     volume: 0.25
-
-automation:
-  - alias: Sonos - Night Clamp at 10:30 PM
-    enabled: false
-    trigger:
-      - platform: time
-        at: "22:30:00"
-    action:
-      - service: script.sonos_clamp_volume
-        data:
-          player: media_player.family_room
-          max_level: 0.18
-      - service: script.sonos_clamp_volume
-        data:
-          player: media_player.kitchen
-          max_level: 0.18
