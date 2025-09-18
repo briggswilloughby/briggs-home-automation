@@ -173,8 +173,9 @@ script:
           for_each: "{{ plist }}"
           sequence:
             - service: sonos.snapshot
-              target: { entity_id: "{{ repeat.item }}" }
-              data: { with_group: true }
+              data:
+                entity_id: "{{ repeat.item }}"
+                with_group: true
 
   sonos_restore_snapshot:
     alias: "Sonos - Restore Snapshot"
@@ -190,8 +191,9 @@ script:
           for_each: "{{ plist }}"
           sequence:
             - service: sonos.restore
-              target: { entity_id: "{{ repeat.item }}" }
-              data: { with_group: true }
+              data:
+                entity_id: "{{ repeat.item }}"
+                with_group: true
 
   sonos_play:
     alias: "Sonos - Play Favorite/URI"
@@ -272,8 +274,9 @@ script:
           for_each: "{{ plist }}"
           sequence:
             - service: media_player.volume_set
-              target: { entity_id: "{{ repeat.item }}" }
-              data: { volume_level: "{{ base }}" }
+              data:
+                entity_id: "{{ repeat.item }}"
+                volume_level: "{{ base }}"
 
   sonos_volume_up_all:
     alias: "Sonos - Volume Up All"
@@ -371,8 +374,8 @@ script:
           for_each: "{{ add_list }}"
           sequence:
             - service: media_player.join
-              target: { entity_id: "{{ coordinator }}" }   # coordinator/master
               data:
+                entity_id: "{{ coordinator }}"
                 group_members:
                   - "{{ repeat.item }}"            # members to add
       - wait_template: >
@@ -465,8 +468,9 @@ script:
           for_each: "{{ plist }}"
           sequence:
             - service: sonos.snapshot
-              target: { entity_id: "{{ repeat.item }}" }
-              data: { with_group: true }
+              data:
+                entity_id: "{{ repeat.item }}"
+                with_group: true
       - choose:
           - conditions: "{{ volume is defined }}"
             sequence:
@@ -474,8 +478,9 @@ script:
                   for_each: "{{ plist }}"
                   sequence:
                     - service: media_player.volume_set
-                      target: { entity_id: "{{ repeat.item }}" }
-                      data: { volume_level: "{{ volume|float }}" }
+                      data:
+                        entity_id: "{{ repeat.item }}"
+                        volume_level: "{{ volume|float }}"
       - choose:
           - conditions: "{{ announce_target is not none }}"
             sequence:
@@ -488,8 +493,9 @@ script:
           for_each: "{{ plist }}"
           sequence:
             - service: sonos.restore
-              target: { entity_id: "{{ repeat.item }}" }
-              data: { with_group: true }
+              data:
+                entity_id: "{{ repeat.item }}"
+                with_group: true
 
   # ---------- GROUP PRESETS / TRANSFERS ----------
   tv_plus_kitchen:
