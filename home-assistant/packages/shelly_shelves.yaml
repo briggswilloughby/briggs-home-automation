@@ -1,5 +1,15 @@
-# /config/packages/shelly_shelves.yaml
-# Shelly Shelves: groups, modes, brightness step, robust flashers (scene-based restore)
+# =============================================================================
+# PACKAGE: shelly_shelves.yaml
+# PURPOSE: Shelly shelf light groups, modes, flashes, and helpers
+# ISSUE: #TBD
+# DEPENDS ON:
+#   - light.shelf_1 … light.shelf_4 provided by Shelly RGBW2s
+#   - Optional Pico + GA layers referencing script.shelf_set_mode_*
+# TESTED ON: Home Assistant Core 2025.8.3 (Container), Sonos S2 16.2
+# NOTES:
+#   - Mode order driven by input_select.shelf_mode options for easy additions.
+#   - Scene snapshots ensure reliable restore after flashes.
+# =============================================================================
 
 #####################
 # 1) LIGHT GROUPS
@@ -135,24 +145,46 @@ script:
     mode: single
     sequence:
       - variables:
-          order: ["tv","chill","party","game_day"]
+          order_raw: "{{ state_attr('input_select.shelf_mode', 'options') }}"
+          order_fallback: ["tv", "chill", "party", "game_day"]
+          order: "{{ order_raw if order_raw is iterable and order_raw|length > 0 else order_fallback }}"
           cur: "{{ states('input_select.shelf_mode') }}"
-          idx: >-
-            {% set i = order.index(cur) if cur in order else -1 %}
-            {{ (i + 1) % order|length }}
-      - service: "script.shelf_set_mode_{{ order[idx] }}"
+          next_mode: >-
+            {% set opts = order %}
+            {% set total = opts|length %}
+            {% if total == 0 %}
+              {{ '' }}
+            {% else %}
+              {% set pos = opts.index(cur) if cur in opts else -1 %}
+              {{ opts[(pos + 1) % total] }}
+            {% endif %}
+      - choose:
+          - conditions: "{{ next_mode | length > 0 }}"
+            sequence:
+              - service: "script.shelf_set_mode_{{ next_mode }}"
 
   shelves_prev_mode:
     alias: Shelves - Previous Mode
     mode: single
     sequence:
       - variables:
-          order: ["tv","chill","party","game_day"]
+          order_raw: "{{ state_attr('input_select.shelf_mode', 'options') }}"
+          order_fallback: ["tv", "chill", "party", "game_day"]
+          order: "{{ order_raw if order_raw is iterable and order_raw|length > 0 else order_fallback }}"
           cur: "{{ states('input_select.shelf_mode') }}"
-          idx: >-
-            {% set i = order.index(cur) if cur in order else 0 %}
-            {{ (i - 1) % order|length }}
-      - service: "script.shelf_set_mode_{{ order[idx] }}"
+          prev_mode: >-
+            {% set opts = order %}
+            {% set total = opts|length %}
+            {% if total == 0 %}
+              {{ '' }}
+            {% else %}
+              {% set pos = opts.index(cur) if cur in opts else 0 %}
+              {{ opts[(pos - 1) % total] }}
+            {% endif %}
+      - choose:
+          - conditions: "{{ prev_mode | length > 0 }}"
+            sequence:
+              - service: "script.shelf_set_mode_{{ prev_mode }}"
 
   # ---- Brightness step (robust; uses brightness_step_pct) ----
   shelves_brightness_step:
@@ -355,16 +387,14 @@ script:
 # 4) OPTIONAL AUTOMATIONS
 #########################
 automation:
-  - alias: Shelves – Reapply Last Mode on Start
+  - alias: Shelves - Reapply Last Mode on Start
     mode: single
     trigger: [{ platform: homeassistant, event: start }]
     action:
+      - variables:
+          desired: "{{ states('input_select.shelf_mode') }}"
+          opts: "{{ state_attr('input_select.shelf_mode', 'options') or [] }}"
       - choose:
-          - conditions: "{{ states('input_select.shelf_mode') == 'tv' }}"
-            sequence: [{ service: script.shelf_set_mode_tv }]
-          - conditions: "{{ states('input_select.shelf_mode') == 'chill' }}"
-            sequence: [{ service: script.shelf_set_mode_chill }]
-          - conditions: "{{ states('input_select.shelf_mode') == 'party' }}"
-            sequence: [{ service: script.shelf_set_mode_party }]
-          - conditions: "{{ states('input_select.shelf_mode') == 'game_day' }}"
-            sequence: [{ service: script.shelf_set_mode_game_day }]
+          - conditions: "{{ desired in opts }}"
+            sequence:
+              - service: "script.shelf_set_mode_{{ desired }}"

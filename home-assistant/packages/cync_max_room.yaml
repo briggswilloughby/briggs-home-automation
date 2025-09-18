@@ -1,0 +1,198 @@
+# =============================================================================
+# PACKAGE: cync_max_room.yaml
+# PURPOSE: Stubbed Max's Room Cync scenes with voice/pico friendly wrappers
+# ISSUE: #TBD
+# DEPENDS ON:
+#   - light.max_cync (Cync fixture or group for Max's room)
+# TESTED ON: Home Assistant Core 2025.8.3 (Container), Sonos S2 16.2
+# NOTES:
+#   - Scene wrappers intentionally avoid brightness/color so future tuning can be
+#     layered in without touching voice or Pico bindings.
+#   - Update `input_select.max_cync_scene` and duplicate the <<: *max_scene block
+#     when new presets are introduced.
+# =============================================================================
+
+---
+homeassistant:
+  customize:
+    script.max_cync_on:
+      google_assistant: true
+      google_assistant_name: "Max Lights On"
+      google_assistant_aliases:
+        - "Turn on Max's lights"
+        - "Max room lights on"
+        - "Switch on Max lighting"
+    script.max_cync_off:
+      google_assistant: true
+      google_assistant_name: "Max Lights Off"
+      google_assistant_aliases:
+        - "Turn off Max's lights"
+        - "Max room lights off"
+        - "Switch off Max lighting"
+    script.max_cync_toggle:
+      google_assistant: true
+      google_assistant_name: "Toggle Max Lights"
+      google_assistant_aliases:
+        - "Toggle Max's lights"
+        - "Flip Max lighting"
+        - "Max lights toggle"
+    script.max_cync_scene_homework:
+      google_assistant: true
+      google_assistant_name: "Max Lights Homework"
+      google_assistant_aliases:
+        - "Homework lights Max"
+        - "Study mode Max"
+        - "Max homework lighting"
+    script.max_cync_scene_play:
+      google_assistant: true
+      google_assistant_name: "Max Lights Play"
+      google_assistant_aliases:
+        - "Playtime lights Max"
+        - "Fun mode Max"
+        - "Max room play lights"
+    script.max_cync_scene_sleep:
+      google_assistant: true
+      google_assistant_name: "Max Lights Sleep"
+      google_assistant_aliases:
+        - "Sleep mode Max"
+        - "Bedtime lights Max"
+        - "Max room night lights"
+    script.max_cync_next_scene:
+      google_assistant: true
+      google_assistant_name: "Max Lights Next Scene"
+      google_assistant_aliases:
+        - "Next Max scene"
+        - "Cycle Max lights"
+        - "Advance Max lighting"
+    script.max_cync_prev_scene:
+      google_assistant: true
+      google_assistant_name: "Max Lights Previous Scene"
+      google_assistant_aliases:
+        - "Previous Max scene"
+        - "Back Max lights"
+        - "Go back Max lighting"
+
+input_select:
+  max_cync_scene:
+    name: Max Cync Scene
+    options: [homework, play, sleep]
+    initial: homework
+
+script:
+
+  max_cync_apply_scene:
+    alias: Max Cync - Apply Scene
+    mode: restart
+    fields:
+      scene:
+        description: Scene key defined in input_select.max_cync_scene
+        example: homework
+    sequence:
+      - variables:
+          requested: "{{ (scene | default(states('input_select.max_cync_scene'))) | lower }}"
+          available: "{{ state_attr('input_select.max_cync_scene', 'options') or ['homework','play','sleep'] }}"
+          target_scene: >-
+            {% set opts = available if available is iterable and available|length > 0 else ['homework','play','sleep'] %}
+            {% if requested in opts %}
+              {{ requested }}
+            {% else %}
+              {{ opts[0] }}
+            {% endif %}
+      - service: light.turn_on
+        target:
+          entity_id: light.max_cync
+      - service: input_select.select_option
+        target:
+          entity_id: input_select.max_cync_scene
+        data:
+          option: "{{ target_scene }}"
+
+  max_cync_scene_homework: &max_scene
+    alias: Max Cync - Scene Homework
+    mode: restart
+    sequence:
+      - service: script.max_cync_apply_scene
+        data:
+          scene: homework
+
+  max_cync_scene_play:
+    <<: *max_scene
+    alias: Max Cync - Scene Play
+    sequence:
+      - service: script.max_cync_apply_scene
+        data:
+          scene: play
+
+  max_cync_scene_sleep:
+    <<: *max_scene
+    alias: Max Cync - Scene Sleep
+    sequence:
+      - service: script.max_cync_apply_scene
+        data:
+          scene: sleep
+
+  max_cync_next_scene:
+    alias: Max Cync - Next Scene
+    mode: single
+    sequence:
+      - variables:
+          order: "{{ state_attr('input_select.max_cync_scene', 'options') or ['homework','play','sleep'] }}"
+          cur: "{{ states('input_select.max_cync_scene') }}"
+          next_scene: >-
+            {% set opts = order if order is iterable and order|length > 0 else ['homework','play','sleep'] %}
+            {% set total = opts|length %}
+            {% if total == 0 %}
+              {{ '' }}
+            {% else %}
+              {% set pos = opts.index(cur) if cur in opts else -1 %}
+              {{ opts[(pos + 1) % total] }}
+            {% endif %}
+      - choose:
+          - conditions: "{{ next_scene | length > 0 }}"
+            sequence:
+              - service: "script.max_cync_scene_{{ next_scene }}"
+
+  max_cync_prev_scene:
+    alias: Max Cync - Previous Scene
+    mode: single
+    sequence:
+      - variables:
+          order: "{{ state_attr('input_select.max_cync_scene', 'options') or ['homework','play','sleep'] }}"
+          cur: "{{ states('input_select.max_cync_scene') }}"
+          prev_scene: >-
+            {% set opts = order if order is iterable and order|length > 0 else ['homework','play','sleep'] %}
+            {% set total = opts|length %}
+            {% if total == 0 %}
+              {{ '' }}
+            {% else %}
+              {% set pos = opts.index(cur) if cur in opts else 0 %}
+              {{ opts[(pos - 1) % total] }}
+            {% endif %}
+      - choose:
+          - conditions: "{{ prev_scene | length > 0 }}"
+            sequence:
+              - service: "script.max_cync_scene_{{ prev_scene }}"
+
+  max_cync_on:
+    alias: Max Cync - On
+    mode: restart
+    sequence:
+      - service: light.turn_on
+        target:
+          entity_id: light.max_cync
+
+  max_cync_off:
+    alias: Max Cync - Off
+    mode: restart
+    sequence:
+      - service: light.turn_off
+        target:
+          entity_id: light.max_cync
+
+  max_cync_toggle:
+    alias: Max Cync - Toggle
+    mode: restart
+    sequence:
+      - service: light.toggle
+        target:
+          entity_id: light.max_cync
