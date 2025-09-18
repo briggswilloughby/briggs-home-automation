@@ -6,6 +6,7 @@
 #   - shelly_shelves.yaml groups + scripts (light.cubbies_*, script.shelf_set_mode_*)
 #   - input_select.shelf_mode defined in shelly_shelves.yaml
 # TESTED ON: Home Assistant Core 2025.8.3 (Container), Sonos S2 16.2
+=======
 # NOTES:
 #   - Adding a new shelf mode only requires updating input_select.shelf_mode options
 #     and duplicating the <<: *cubbies_mode_wrapper block with new target_mode.

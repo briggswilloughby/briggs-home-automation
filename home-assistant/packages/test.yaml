@@ -1,0 +1,12 @@
+# =============================================================================
+# PACKAGE: test.yaml
+# PURPOSE: Placeholder Home Assistant package for validation tests
+# ISSUE: #0 (placeholder tracking)
+# DEPENDS ON:
+#   - None (empty scaffold)
+# TESTED ON: Pending automated validation
+# NOTES:
+#   - Minimal structure to satisfy ADR-0006 header requirements and linting.
+# =============================================================================
+
+homeassistant: {}

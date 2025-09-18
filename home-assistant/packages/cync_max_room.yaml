@@ -5,14 +5,6 @@
 # DEPENDS ON:
 #   - light.max_cync (Cync fixture or group for Max's room)
 # TESTED ON: Home Assistant Core 2025.8.3 (Container), Sonos S2 16.2
-# NOTES:
-#   - Scene wrappers intentionally avoid brightness/color so future tuning can be
-#     layered in without touching voice or Pico bindings.
-#   - Update `input_select.max_cync_scene` and duplicate the <<: *max_scene block
-#     when new presets are introduced.
-# =============================================================================
-
----
 homeassistant:
   customize:
     script.max_cync_on:
