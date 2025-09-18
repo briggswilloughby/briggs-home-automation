@@ -1,0 +1,196 @@
+# =============================================================================
+# PACKAGE: cync_office.yaml
+# PURPOSE: Stubbed Office Cync lighting scenes with voice/pico friendly wrappers
+# DEPENDS ON:
+#   - light.office_cync (Cync fixture or group in the Office)
+# TESTED ON: Home Assistant Core 2025.8.3 (container)
+# NOTES:
+#   - Scene wrappers intentionally omit brightness/color so real presets can be
+#     filled in later without touching interfaces.
+#   - Update `input_select.office_cync_scene` and duplicate the <<: *office_scene
+#     block when adding new scenes.
+# =============================================================================
+
+homeassistant:
+  customize:
+    script.office_cync_on:
+      google_assistant: true
+      google_assistant_name: "Office Lights On"
+      google_assistant_aliases:
+        - "Turn on office lights"
+        - "Office lights on"
+        - "Switch on office lighting"
+    script.office_cync_off:
+      google_assistant: true
+      google_assistant_name: "Office Lights Off"
+      google_assistant_aliases:
+        - "Turn off office lights"
+        - "Office lights off"
+        - "Switch off office lighting"
+    script.office_cync_toggle:
+      google_assistant: true
+      google_assistant_name: "Toggle Office Lights"
+      google_assistant_aliases:
+        - "Toggle office lights"
+        - "Flip office lighting"
+        - "Office lights toggle"
+    script.office_cync_scene_focus:
+      google_assistant: true
+      google_assistant_name: "Office Lights Focus"
+      google_assistant_aliases:
+        - "Focus mode office"
+        - "Bright office lights"
+        - "Office work lights"
+    script.office_cync_scene_calm:
+      google_assistant: true
+      google_assistant_name: "Office Lights Calm"
+      google_assistant_aliases:
+        - "Calm mode office"
+        - "Relax office lighting"
+        - "Soft office lights"
+    script.office_cync_scene_night:
+      google_assistant: true
+      google_assistant_name: "Office Lights Night"
+      google_assistant_aliases:
+        - "Night mode office"
+        - "Dim office lighting"
+        - "Office lights bedtime"
+    script.office_cync_next_scene:
+      google_assistant: true
+      google_assistant_name: "Office Lights Next Scene"
+      google_assistant_aliases:
+        - "Next office scene"
+        - "Cycle office lights"
+        - "Advance office lighting"
+    script.office_cync_prev_scene:
+      google_assistant: true
+      google_assistant_name: "Office Lights Previous Scene"
+      google_assistant_aliases:
+        - "Previous office scene"
+        - "Back office lights"
+        - "Go back office scene"
+
+input_select:
+  office_cync_scene:
+    name: Office Cync Scene
+    options: [focus, calm, night]
+    initial: focus
+
+script:
+
+  office_cync_apply_scene:
+    alias: Office Cync - Apply Scene
+    mode: restart
+    fields:
+      scene:
+        description: Scene key defined in input_select.office_cync_scene
+        example: focus
+    sequence:
+      - variables:
+          requested: "{{ (scene | default(states('input_select.office_cync_scene'))) | lower }}"
+          available: "{{ state_attr('input_select.office_cync_scene', 'options') or ['focus','calm','night'] }}"
+          target_scene: >-
+            {% set opts = available if available is iterable and available|length > 0 else ['focus','calm','night'] %}
+            {% if requested in opts %}
+              {{ requested }}
+            {% else %}
+              {{ opts[0] }}
+            {% endif %}
+      - service: light.turn_on
+        target:
+          entity_id: light.office_cync
+      - service: input_select.select_option
+        target:
+          entity_id: input_select.office_cync_scene
+        data:
+          option: "{{ target_scene }}"
+
+  office_cync_scene_focus: &office_scene
+    alias: Office Cync - Scene Focus
+    mode: restart
+    sequence:
+      - service: script.office_cync_apply_scene
+        data:
+          scene: focus
+
+  office_cync_scene_calm:
+    <<: *office_scene
+    alias: Office Cync - Scene Calm
+    sequence:
+      - service: script.office_cync_apply_scene
+        data:
+          scene: calm
+
+  office_cync_scene_night:
+    <<: *office_scene
+    alias: Office Cync - Scene Night
+    sequence:
+      - service: script.office_cync_apply_scene
+        data:
+          scene: night
+
+  office_cync_next_scene:
+    alias: Office Cync - Next Scene
+    mode: single
+    sequence:
+      - variables:
+          order: "{{ state_attr('input_select.office_cync_scene', 'options') or ['focus','calm','night'] }}"
+          cur: "{{ states('input_select.office_cync_scene') }}"
+          next_scene: >-
+            {% set opts = order if order is iterable and order|length > 0 else ['focus','calm','night'] %}
+            {% set total = opts|length %}
+            {% if total == 0 %}
+              {{ '' }}
+            {% else %}
+              {% set pos = opts.index(cur) if cur in opts else -1 %}
+              {{ opts[(pos + 1) % total] }}
+            {% endif %}
+      - choose:
+          - conditions: "{{ next_scene | length > 0 }}"
+            sequence:
+              - service: "script.office_cync_scene_{{ next_scene }}"
+
+  office_cync_prev_scene:
+    alias: Office Cync - Previous Scene
+    mode: single
+    sequence:
+      - variables:
+          order: "{{ state_attr('input_select.office_cync_scene', 'options') or ['focus','calm','night'] }}"
+          cur: "{{ states('input_select.office_cync_scene') }}"
+          prev_scene: >-
+            {% set opts = order if order is iterable and order|length > 0 else ['focus','calm','night'] %}
+            {% set total = opts|length %}
+            {% if total == 0 %}
+              {{ '' }}
+            {% else %}
+              {% set pos = opts.index(cur) if cur in opts else 0 %}
+              {{ opts[(pos - 1) % total] }}
+            {% endif %}
+      - choose:
+          - conditions: "{{ prev_scene | length > 0 }}"
+            sequence:
+              - service: "script.office_cync_scene_{{ prev_scene }}"
+
+  office_cync_on:
+    alias: Office Cync - On
+    mode: restart
+    sequence:
+      - service: light.turn_on
+        target:
+          entity_id: light.office_cync
+
+  office_cync_off:
+    alias: Office Cync - Off
+    mode: restart
+    sequence:
+      - service: light.turn_off
+        target:
+          entity_id: light.office_cync
+
+  office_cync_toggle:
+    alias: Office Cync - Toggle
+    mode: restart
+    sequence:
+      - service: light.toggle
+        target:
+          entity_id: light.office_cync
