@@ -11,8 +11,6 @@
 #   - Update `input_select.max_cync_scene` and duplicate the <<: *max_scene block
 #     when new presets are introduced.
 # =============================================================================
-
----
 homeassistant:
   customize:
     script.max_cync_on:
