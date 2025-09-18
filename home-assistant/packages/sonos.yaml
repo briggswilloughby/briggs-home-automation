@@ -9,9 +9,146 @@
 # =============================================================================
 homeassistant:
   customize:
+    script.tv_plus_kitchen:
+      google_assistant: true
+      google_assistant_name: "Group TV and Kitchen"
+      google_assistant_aliases:
+        - "Connect TV to kitchen speaker"
+        - "Join family room with kitchen"
+        - "Group TV with kitchen Sonos"
+    script.tv_plus_bar:
+      google_assistant: true
+      google_assistant_name: "Group TV and Bar"
+      google_assistant_aliases:
+        - "Connect TV to bar speaker"
+        - "Join family room with bar"
+        - "Group TV with bar Sonos"
+    script.tv_plus_patio:
+      google_assistant: true
+      google_assistant_name: "Group TV and Patio"
+      google_assistant_aliases:
+        - "Connect TV to patio speaker"
+        - "Join family room with patio"
+        - "Group TV with patio Sonos"
+    script.tv_whole_house:
+      google_assistant: true
+      google_assistant_name: "TV Whole House"
+      google_assistant_aliases:
+        - "Play TV everywhere"
+        - "Whole house TV audio"
+        - "Group all Sonos for TV"
+    script.sonos_ungroup_all:
+      google_assistant: true
+      google_assistant_name: "Ungroup All Sonos"
+      google_assistant_aliases:
+        - "Disconnect all Sonos"
+        - "Clear every Sonos group"
+        - "Ungroup the speakers"
+    script.unjoin_kitchen:
+      google_assistant: true
+      google_assistant_name: "Ungroup Kitchen Sonos"
+      google_assistant_aliases:
+        - "Disconnect kitchen speaker"
+        - "Kitchen speaker solo"
+        - "Ungroup kitchen speaker"
+    script.unjoin_bar:
+      google_assistant: true
+      google_assistant_name: "Ungroup Bar Sonos"
+      google_assistant_aliases:
+        - "Disconnect bar speaker"
+        - "Bar speaker solo"
+        - "Ungroup bar speaker"
+    script.unjoin_patio:
+      google_assistant: true
+      google_assistant_name: "Ungroup Patio Sonos"
+      google_assistant_aliases:
+        - "Disconnect patio speaker"
+        - "Patio speaker solo"
+        - "Ungroup patio speaker"
+    script.unjoin_roam2:
+      google_assistant: true
+      google_assistant_name: "Ungroup Roam Sonos"
+      google_assistant_aliases:
+        - "Disconnect roam speaker"
+        - "Roam speaker solo"
+        - "Ungroup roam speaker"
     script.move_tv_to_kitchen:
       google_assistant: true
-      google_assistant_name: "TV in Kitchen"
+      google_assistant_name: "Move TV to Kitchen"
+      google_assistant_aliases:
+        - "Send TV audio to kitchen"
+        - "Play TV on kitchen speaker"
+        - "Move family room audio to kitchen"
+    script.move_kitchen_to_tv:
+      google_assistant: true
+      google_assistant_name: "Move Kitchen to TV"
+      google_assistant_aliases:
+        - "Bring kitchen audio to TV"
+        - "Move kitchen music to family room"
+        - "Send kitchen speaker to TV"
+    script.move_tv_to_bar:
+      google_assistant: true
+      google_assistant_name: "Move TV to Bar"
+      google_assistant_aliases:
+        - "Send TV audio to bar"
+        - "Play TV on bar speaker"
+        - "Move family room audio to bar"
+    script.move_bar_to_tv:
+      google_assistant: true
+      google_assistant_name: "Move Bar to TV"
+      google_assistant_aliases:
+        - "Bring bar music to TV"
+        - "Move bar speaker to family room"
+        - "Send bar audio to TV"
+    script.move_tv_to_patio:
+      google_assistant: true
+      google_assistant_name: "Move TV to Patio"
+      google_assistant_aliases:
+        - "Send TV audio to patio"
+        - "Play TV on patio speaker"
+        - "Move family room audio to patio"
+    script.move_patio_to_tv:
+      google_assistant: true
+      google_assistant_name: "Move Patio to TV"
+      google_assistant_aliases:
+        - "Bring patio music to TV"
+        - "Move patio speaker to family room"
+        - "Send patio audio to TV"
+    script.sonos_mute_all:
+      google_assistant: true
+      google_assistant_name: "Mute All Sonos"
+      google_assistant_aliases:
+        - "Mute every Sonos speaker"
+        - "Silence all Sonos"
+        - "Mute the house speakers"
+    script.sonos_unmute_all:
+      google_assistant: true
+      google_assistant_name: "Unmute All Sonos"
+      google_assistant_aliases:
+        - "Unmute every Sonos speaker"
+        - "Restore Sonos sound"
+        - "Turn the speakers back on"
+    script.sonos_volume_up_all:
+      google_assistant: true
+      google_assistant_name: "Sonos Volume Up"
+      google_assistant_aliases:
+        - "Increase all Sonos volume"
+        - "Sonos louder"
+        - "Raise whole house volume"
+    script.sonos_volume_down_all:
+      google_assistant: true
+      google_assistant_name: "Sonos Volume Down"
+      google_assistant_aliases:
+        - "Decrease all Sonos volume"
+        - "Sonos softer"
+        - "Lower whole house volume"
+    script.sonos_volume_baseline_all:
+      google_assistant: true
+      google_assistant_name: "Reset Sonos Volume"
+      google_assistant_aliases:
+        - "Set all Sonos to baseline"
+        - "Normalize Sonos volume"
+        - "Reset the speaker volumes"
 
 script:
 
@@ -98,6 +235,74 @@ script:
       - service: media_player.volume_set
         target: { entity_id: "{{ player }}" }
         data: { volume_level: "{{ newv }}" }
+
+  sonos_apply_baseline:
+    alias: "Sonos - Apply Baseline Volume"
+    mode: parallel
+    fields:
+      players:
+        description: Optional media_player.* or list to normalize (defaults to all zones)
+      volume:
+        description: Baseline volume_level (0.0-1.0, default 0.15)
+    sequence:
+      - variables:
+          all_players:
+            - media_player.family_room
+            - media_player.kitchen
+            - media_player.bar
+            - media_player.patio
+            - media_player.roam2
+          raw: "{{ players | default(all_players) }}"
+          plist: >
+            {{ raw if raw is iterable and raw is not string else [raw] }}
+          base: "{{ (volume | default(0.15)) | float }}"
+      - service: media_player.volume_set
+        target: { entity_id: "{{ plist }}" }
+        data: { volume_level: "{{ base }}" }
+
+  sonos_volume_up_all:
+    alias: "Sonos - Volume Up All"
+    mode: parallel
+    sequence:
+      - variables:
+          targets:
+            - media_player.family_room
+            - media_player.kitchen
+            - media_player.bar
+            - media_player.patio
+            - media_player.roam2
+      - repeat:
+          for_each: "{{ targets }}"
+          sequence:
+            - service: script.sonos_relative_volume
+              data:
+                player: "{{ repeat.item }}"
+                delta: 0.05
+
+  sonos_volume_down_all:
+    alias: "Sonos - Volume Down All"
+    mode: parallel
+    sequence:
+      - variables:
+          targets:
+            - media_player.family_room
+            - media_player.kitchen
+            - media_player.bar
+            - media_player.patio
+            - media_player.roam2
+      - repeat:
+          for_each: "{{ targets }}"
+          sequence:
+            - service: script.sonos_relative_volume
+              data:
+                player: "{{ repeat.item }}"
+                delta: -0.05
+
+  sonos_volume_baseline_all:
+    alias: "Sonos - Volume Baseline All"
+    mode: restart
+    sequence:
+      - service: script.sonos_apply_baseline
 
   sonos_move:
     alias: "Sonos - Move Playback"
@@ -261,9 +466,9 @@ script:
         data:
           coordinator: media_player.family_room
           members: [media_player.kitchen]
-      - service: media_player.volume_set
-        target: { entity_id: media_player.kitchen }
-        data: { volume_level: 0.10 }
+      - service: script.sonos_apply_baseline
+        data:
+          players: media_player.kitchen
 
   tv_plus_bar:
     alias: "TV and Bar"
@@ -273,6 +478,9 @@ script:
         data:
           coordinator: media_player.family_room
           members: [media_player.bar]
+      - service: script.sonos_apply_baseline
+        data:
+          players: media_player.bar
 
   tv_plus_patio:
     alias: "TV and Patio"
@@ -282,6 +490,9 @@ script:
         data:
           coordinator: media_player.family_room
           members: [media_player.patio]
+      - service: script.sonos_apply_baseline
+        data:
+          players: media_player.patio
 
   tv_whole_house:
     alias: "TV Whole House"
@@ -291,6 +502,13 @@ script:
         data:
           coordinator: media_player.family_room
           members:
+            - media_player.kitchen
+            - media_player.bar
+            - media_player.patio
+            - media_player.roam2
+      - service: script.sonos_apply_baseline
+        data:
+          players:
             - media_player.kitchen
             - media_player.bar
             - media_player.patio

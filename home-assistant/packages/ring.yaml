@@ -5,13 +5,11 @@
 # DEPENDS ON:
 #   - Shelly shelves package providing script.shelves_doorbell_flash
 #   - Sonos players: media_player.kitchen, media_player.patio
-#   - File at /config/www/dingdong.mp3 → http://<HA-IP>:8123/local/dingdong.mp3
+#   - File at /config/www/dingdong.mp3 → media-source://media_source/local/dingdong.mp3
 #
 # NOTES:
 #   - All steps use `service:` (canonical). UI may say “Actions”, YAML uses `service`.
-#   - If you prefer Media Source, switch chime_url to
-#       media-source://media_source/local/dingdong.mp3
-#     and keep media_content_type: music.
+#   - Media Source URI avoids expiring auth tokens per ADR-0005.
 # =============================================================================
 
 script:
@@ -22,7 +20,7 @@ script:
       players:
         - media_player.kitchen
         - media_player.patio
-      chime_url: "http://192.168.68.86:8123/local/dingdong.mp3"  # /config/www/dingdong.mp3
+      chime_url: "media-source://media_source/local/dingdong.mp3"
       chime_vol: 0.40
       chime_len: "00:00:03"
     sequence:
