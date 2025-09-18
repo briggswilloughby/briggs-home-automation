@@ -212,21 +212,23 @@ script:
           - conditions: "{{ volume is defined }}"
             sequence:
               - service: media_player.volume_set
-                target: { entity_id: "{{ player }}" }
-                data: { volume_level: "{{ volume|float }}" }
+                data:
+                  entity_id: "{{ player }}"
+                  volume_level: "{{ volume|float }}"
       - choose:
           - conditions: "{{ favorite is defined and favorite|length > 0 }}"
             sequence:
               - service: media_player.select_source
-                target: { entity_id: "{{ player }}" }
-                data: { source: "{{ favorite }}" }
+                data:
+                  entity_id: "{{ player }}"
+                  source: "{{ favorite }}"
         default:
           - choose:
               - conditions: "{{ uri is defined and uri|length > 0 }}"
                 sequence:
                   - service: media_player.play_media
-                    target: { entity_id: "{{ player }}" }
                     data:
+                      entity_id: "{{ player }}"
                       media_content_id: "{{ uri }}"
                       media_content_type: music
 
@@ -247,8 +249,9 @@ script:
             {% else %}{{ (d|float(7))/100 }}{% endif %}
           newv: "{{ [1, [0, cur + step]|max ]|min }}"
       - service: media_player.volume_set
-        target: { entity_id: "{{ player }}" }
-        data: { volume_level: "{{ newv }}" }
+        data:
+          entity_id: "{{ player }}"
+          volume_level: "{{ newv }}"
 
   sonos_apply_baseline:
     alias: "Sonos - Apply Baseline Volume"
@@ -340,16 +343,18 @@ script:
           _settle: "{{ (settle_ms | default(400) | int) / 1000 }}"
       # 1) Promote DEST to its own coordinator (safe if already solo)
       - service: media_player.unjoin
-        target: { entity_id: "{{ _dest }}" }
+        data:
+          entity_id: "{{ _dest }}"
       - delay: { seconds: "{{ _settle }}" }
       # 2) Unjoin SOURCE from any prior group
       - service: media_player.unjoin
-        target: { entity_id: "{{ _source }}" }
+        data:
+          entity_id: "{{ _source }}"
       - delay: { seconds: "{{ _settle }}" }
       # 3) Join SOURCE into DEST's group (DEST remains coordinator)
       - service: media_player.join
-        target: { entity_id: "{{ _dest }}" }     # coordinator/master
         data:
+          entity_id: "{{ _dest }}"     # coordinator/master
           group_members:
             - "{{ _source }}"                    # member to add
       - wait_template: >
@@ -415,8 +420,9 @@ script:
           - conditions: "{{ newv < cur }}"
             sequence:
               - service: media_player.volume_set
-                target: { entity_id: "{{ player }}" }
-                data: { volume_level: "{{ newv }}" }
+                data:
+                  entity_id: "{{ player }}"
+                  volume_level: "{{ newv }}"
 
   sonos_mute_all:
     alias: "Sonos - Mute All"
