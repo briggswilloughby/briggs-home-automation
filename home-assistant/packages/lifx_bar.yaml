@@ -1,9 +1,10 @@
 # =============================================================================
 # PACKAGE: lifx_bar.yaml
 # PURPOSE: Stubbed Bar LIFX lighting scenes with voice/pico friendly wrappers
+# ISSUE: #TBD
 # DEPENDS ON:
 #   - light.bar_lifx (primary LIFX fixture or group in the Bar)
-# TESTED ON: Home Assistant Core 2025.8.3 (container)
+# TESTED ON: Home Assistant Core 2025.8.3 (Container), Sonos S2 16.2
 # NOTES:
 #   - Scene wrappers intentionally leave light parameters empty so future
 #     brightness/color tuning can slot in without breaking GA/Pico bindings.

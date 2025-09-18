@@ -1,10 +1,11 @@
 # =============================================================================
 # PACKAGE: shelly_shelves.yaml
 # PURPOSE: Shelly shelf light groups, modes, flashes, and helpers
+# ISSUE: #TBD
 # DEPENDS ON:
 #   - light.shelf_1 … light.shelf_4 provided by Shelly RGBW2s
-#   - Optional pico + GA layers referencing script.shelf_set_mode_*
-# TESTED ON: Home Assistant Core 2025.8.3 (container)
+#   - Optional Pico + GA layers referencing script.shelf_set_mode_*
+# TESTED ON: Home Assistant Core 2025.8.3 (Container), Sonos S2 16.2
 # NOTES:
 #   - Mode order driven by input_select.shelf_mode options for easy additions.
 #   - Scene snapshots ensure reliable restore after flashes.

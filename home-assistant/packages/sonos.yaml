@@ -1,12 +1,18 @@
 # =============================================================================
 # PACKAGE: sonos.yaml
 # PURPOSE: Sonos helpers and presets (Family Room, Kitchen, Bar, Patio, Roam2)
+# ISSUE: #TBD
+# DEPENDS ON:
+#   - media_player.family_room, media_player.kitchen, media_player.bar
+#   - media_player.patio, media_player.roam2
+# TESTED ON: Home Assistant Core 2025.8.3 (Container), Sonos S2 16.2
 # NOTES:
 #   - YAML uses `service:` for calls (UI label "Actions" is just naming).
-#   - Grouping now uses generic media_player.join/unjoin (current HA behavior).
-#   - Snapshots/restores still use sonos.snapshot/sonos.restore with groups.
+#   - Grouping uses media_player.join/unjoin per HA 2025.8.3 behavior.
+#   - Snapshots/restores call sonos.snapshot/sonos.restore with with_group: true.
 #   - Move: promote DEST to coordinator, unjoin SOURCE, then join SOURCE→DEST.
 # =============================================================================
+
 homeassistant:
   customize:
     script.tv_plus_kitchen:
