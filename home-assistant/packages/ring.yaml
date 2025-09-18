@@ -31,14 +31,15 @@ script:
           for_each: *doorbell_players
           sequence:
             - service: media_player.volume_set
-              target: { entity_id: "{{ repeat.item }}" }
-              data: { volume_level: "{{ chime_vol }}" }
+              data:
+                entity_id: "{{ repeat.item }}"
+                volume_level: "{{ chime_vol }}"
       - repeat:
           for_each: *doorbell_players
           sequence:
             - service: media_player.play_media
-              target: { entity_id: "{{ repeat.item }}" }
               data:
+                entity_id: "{{ repeat.item }}"
                 media_content_id: "{{ chime_url }}"
                 media_content_type: music
             - delay: "00:00:00.20"
