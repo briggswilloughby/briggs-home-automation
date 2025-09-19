@@ -266,8 +266,8 @@ script:
             - light.shelf_4
           sequence:
             - service: light.turn_on
-              target: { entity_id: "{{ repeat.item }}" }
               data:
+                entity_id: "{{ repeat.item }}"
                 transition: 0
 
   # ---- Doorbell Flash (scene snapshot → red x3 → restore) ----
@@ -318,8 +318,8 @@ script:
             - light.shelf_4
           sequence:
             - service: light.turn_on
-              target: { entity_id: "{{ repeat.item }}" }
               data:
+                entity_id: "{{ repeat.item }}"
                 transition: 0
 
   # ---- (Optional) Shelf 2 – Probe Restore (single-light test) ----
@@ -377,8 +377,8 @@ script:
           for_each: "{{ targets }}"
           sequence:
             - service: light.turn_on
-              target: { entity_id: "{{ repeat.item }}" }
               data:
+                entity_id: "{{ repeat.item }}"
                 rgbw_color: [ "{{ r }}", "{{ g }}", "{{ b }}", "{{ w }}" ]
                 brightness_pct: "{{ bp }}"
                 transition: "{{ tr }}"
