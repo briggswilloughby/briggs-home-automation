@@ -24,6 +24,7 @@ script:
         description: One or more media_player.*
     sequence:
       - variables:
+
           player_list_json: >-
             {% set candidate = players if players is defined else none %}
             {% if candidate is mapping and 'entity_id' in candidate %}
@@ -78,6 +79,7 @@ script:
                         entity_id: "{{ player_id }}"
                         with_group: true
 
+
   sonos_restore_snapshot:
     alias: "Sonos - Restore Snapshot"
     mode: restart
@@ -86,6 +88,7 @@ script:
         description: One or more media_player.*
     sequence:
       - variables:
+
           player_list_json: >-
             {% set candidate = players if players is defined else none %}
             {% if candidate is mapping and 'entity_id' in candidate %}
@@ -139,6 +142,7 @@ script:
                       data:
                         entity_id: "{{ player_id }}"
                         with_group: true
+
 
   sonos_play:
     alias: "Sonos - Play Favorite/URI"
