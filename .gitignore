@@ -1,27 +1,3 @@
-﻿# Home Assistant internals and secrets
-secrets.yaml
-.secrets.yaml
-.storage/
-.cloud/
-home-assistant_v2.db
-*.db
-*.db-shm
-*.db-wal
-.backups/
-backups/
-media/
-
-# OS / editor cruft
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-
-# SSH keys
-id_ed25519*
-*.pub
-githubssh*
-# --- Home Assistant runtime / local secrets ---
 .HA_VERSION
 home-assistant_v2.db*
 *.db
@@ -36,6 +12,3 @@ deps/
 tts/
 media/*
 www/*
-blueprints/
-scenes.yaml
-scripts.yaml
