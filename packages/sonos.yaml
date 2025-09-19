@@ -24,11 +24,59 @@ script:
         description: One or more media_player.*
     sequence:
       - variables:
-          plist: >
-            {{ players if players is iterable and players is not string else [players] }}
-      - service: sonos.snapshot
-        target: { entity_id: "{{ plist }}" }
-        data: { with_group: true }
+          player_list_json: >-
+            {% set candidate = players if players is defined else none %}
+            {% if candidate is mapping and 'entity_id' in candidate %}
+              {% set candidate = candidate.entity_id %}
+            {% endif %}
+            {% set ns = namespace(items=[]) %}
+            {% if candidate is none %}
+            {% elif candidate is iterable and candidate is not string %}
+              {% for raw in candidate %}
+                {% set value = raw.entity_id if raw is mapping and 'entity_id' in raw else raw %}
+                {% set text = (value | string) | trim %}
+                {% if text %}
+                  {% set matches = text | regex_findall('media_player\\.[\w_]+') %}
+                  {% if matches %}
+                    {% for match in matches %}
+                      {% set ns.items = ns.items + [match] %}
+                    {% endfor %}
+                  {% elif text | regex_match('^[\w_]+$') %}
+                    {% set ns.items = ns.items + ['media_player.' ~ text] %}
+                  {% elif text | regex_match('^media_player\\.[\w_]+$') %}
+                    {% set ns.items = ns.items + [text] %}
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+            {% else %}
+              {% set text = (candidate | string) | trim %}
+              {% if text %}
+                {% set matches = text | regex_findall('media_player\\.[\w_]+') %}
+                {% if matches %}
+                  {% for match in matches %}
+                    {% set ns.items = ns.items + [match] %}
+                  {% endfor %}
+                {% elif text | regex_match('^[\w_]+$') %}
+                  {% set ns.items = ns.items + ['media_player.' ~ text] %}
+                {% elif text | regex_match('^media_player\\.[\w_]+$') %}
+                  {% set ns.items = ns.items + [text] %}
+                {% endif %}
+              {% endif %}
+            {% endif %}
+            {% set cleaned = ns.items | reject('equalto', '') | list %}
+            {{ cleaned | unique | list | tojson }}
+      - repeat:
+          for_each: "{{ player_list_json | from_json }}"
+          sequence:
+            - variables:
+                player_id: "{{ (repeat.item | string) | trim }}"
+            - choose:
+                - conditions: "{{ player_id | regex_match('^media_player\\.[\w_]+$') }}"
+                  sequence:
+                    - service: sonos.snapshot
+                      data:
+                        entity_id: "{{ player_id }}"
+                        with_group: true
 
   sonos_restore_snapshot:
     alias: "Sonos - Restore Snapshot"
@@ -38,11 +86,59 @@ script:
         description: One or more media_player.*
     sequence:
       - variables:
-          plist: >
-            {{ players if players is iterable and players is not string else [players] }}
-      - service: sonos.restore
-        target: { entity_id: "{{ plist }}" }
-        data: { with_group: true }
+          player_list_json: >-
+            {% set candidate = players if players is defined else none %}
+            {% if candidate is mapping and 'entity_id' in candidate %}
+              {% set candidate = candidate.entity_id %}
+            {% endif %}
+            {% set ns = namespace(items=[]) %}
+            {% if candidate is none %}
+            {% elif candidate is iterable and candidate is not string %}
+              {% for raw in candidate %}
+                {% set value = raw.entity_id if raw is mapping and 'entity_id' in raw else raw %}
+                {% set text = (value | string) | trim %}
+                {% if text %}
+                  {% set matches = text | regex_findall('media_player\\.[\w_]+') %}
+                  {% if matches %}
+                    {% for match in matches %}
+                      {% set ns.items = ns.items + [match] %}
+                    {% endfor %}
+                  {% elif text | regex_match('^[\w_]+$') %}
+                    {% set ns.items = ns.items + ['media_player.' ~ text] %}
+                  {% elif text | regex_match('^media_player\\.[\w_]+$') %}
+                    {% set ns.items = ns.items + [text] %}
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+            {% else %}
+              {% set text = (candidate | string) | trim %}
+              {% if text %}
+                {% set matches = text | regex_findall('media_player\\.[\w_]+') %}
+                {% if matches %}
+                  {% for match in matches %}
+                    {% set ns.items = ns.items + [match] %}
+                  {% endfor %}
+                {% elif text | regex_match('^[\w_]+$') %}
+                  {% set ns.items = ns.items + ['media_player.' ~ text] %}
+                {% elif text | regex_match('^media_player\\.[\w_]+$') %}
+                  {% set ns.items = ns.items + [text] %}
+                {% endif %}
+              {% endif %}
+            {% endif %}
+            {% set cleaned = ns.items | reject('equalto', '') | list %}
+            {{ cleaned | unique | list | tojson }}
+      - repeat:
+          for_each: "{{ player_list_json | from_json }}"
+          sequence:
+            - variables:
+                player_id: "{{ (repeat.item | string) | trim }}"
+            - choose:
+                - conditions: "{{ player_id | regex_match('^media_player\\.[\w_]+$') }}"
+                  sequence:
+                    - service: sonos.restore
+                      data:
+                        entity_id: "{{ player_id }}"
+                        with_group: true
 
   sonos_play:
     alias: "Sonos - Play Favorite/URI"
