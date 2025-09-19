@@ -18,7 +18,7 @@
 8) Naming: lowercase snake_case, scripts `script.*`, helpers `input_*` (ADR-0002).
 
 ## File layout
-- `home-assistant/packages/*.yaml` (one feature per file)
+- `ha/config/packages/*.yaml` (one feature per file)
 - `docs/ADR/*.md`, `docs/KNOWN-PITFALLS.md`, `CHANGELOG.md`
 
 ## Output quality bar
