@@ -1,15 +1,17 @@
 # =============================================================================
 # PACKAGE: ring.yaml
 # PURPOSE: Ring ding → flash Shelly shelves + play chime on Kitchen & Patio Sonos
-# ISSUE: #TBD
+#
 # DEPENDS ON:
 #   - Shelly shelves package providing script.shelves_doorbell_flash
 #   - Sonos players: media_player.kitchen, media_player.patio
-#   - File at /config/www/dingdong.mp3 served via media-source://media_source/local/dingdong.mp3
-# TESTED ON: Home Assistant Core 2025.8.3 (Container), Sonos S2 16.2
+#   - File at /config/www/dingdong.mp3 → http://<HA-IP>:8123/local/dingdong.mp3
+#
 # NOTES:
 #   - All steps use `service:` (canonical). UI may say “Actions”, YAML uses `service`.
-#   - Media Source URI avoids expiring auth tokens per ADR-0005.
+#   - If you prefer Media Source, switch chime_url to
+#       media-source://media_source/local/dingdong.mp3
+#     and keep media_content_type: music.
 # =============================================================================
 
 script:
@@ -17,36 +19,35 @@ script:
     alias: Sonos - Doorbell Chime (Kitchen + Patio)
     mode: single
     variables:
-      players: &doorbell_players
+      players:
         - media_player.kitchen
         - media_player.patio
-      chime_url: "media-source://media_source/local/dingdong.mp3"
+      chime_url: "http://192.168.68.86:8123/local/dingdong.mp3"  # /config/www/dingdong.mp3
       chime_vol: 0.40
       chime_len: "00:00:03"
     sequence:
-      - service: script.sonos_snapshot
-        data:
-          players: *doorbell_players
+      - service: sonos.snapshot
+        target: { entity_id: "{{ players }}" }
+        data: { with_group: true }
       - repeat:
-          for_each: *doorbell_players
+          for_each: "{{ players }}"
           sequence:
             - service: media_player.volume_set
-              data:
-                entity_id: "{{ repeat.item }}"
-                volume_level: "{{ chime_vol }}"
+              target: { entity_id: "{{ repeat.item }}" }
+              data: { volume_level: "{{ chime_vol }}" }
       - repeat:
-          for_each: *doorbell_players
+          for_each: "{{ players }}"
           sequence:
             - service: media_player.play_media
+              target: { entity_id: "{{ repeat.item }}" }
               data:
-                entity_id: "{{ repeat.item }}"
                 media_content_id: "{{ chime_url }}"
                 media_content_type: music
             - delay: "00:00:00.20"
       - delay: "{{ chime_len }}"
-      - service: script.sonos_restore_snapshot
-        data:
-          players: *doorbell_players
+      - service: sonos.restore
+        target: { entity_id: "{{ players }}" }
+        data: { with_group: true }
 
 automation:
   - alias: Ring → Ding-Dong + Shelves Flash

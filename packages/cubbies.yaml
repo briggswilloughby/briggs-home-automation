@@ -1,145 +1,46 @@
 # =============================================================================
 # PACKAGE: cubbies.yaml
-# PURPOSE: Voice/Pico-friendly wrappers for Shelly shelf ("Cubbies") controls
-# ISSUE: #TBD
+# PURPOSE: Provide "Cubbies ..." aliases/wrappers for shelves lights & modes
+#
 # DEPENDS ON:
-#   - shelly_shelves.yaml groups + scripts (light.cubbies_*, script.shelf_set_mode_*)
-#   - input_select.shelf_mode defined in shelly_shelves.yaml
-# TESTED ON: Home Assistant Core 2025.8.3 (Container), Sonos S2 16.2
+#   - Group entities created in shelly_shelves.yaml:
+#       light.cubbies_all, light.cubbies_odd, light.cubbies_even
+#   - Shelf scripts in shelly_shelves.yaml:
+#       script.shelf_set_mode_tv / chill / party / game_day
+#       script.shelves_brightness_step / shelves_brighter / shelves_dimmer
+#       script.shelves_next_mode / shelves_prev_mode
 # NOTES:
-#   - Adding a new shelf mode only requires updating input_select.shelf_mode options
-#     and duplicating the <<: *cubbies_mode_wrapper block with new target_mode.
-#   - Expose new modes to Google Assistant by copying a customize block below and
-#     aligning the name/aliases with the wrapper script.
-#   - Voice aliases provided for natural Google Assistant phrasing.
+#   - All steps use `service:` (canonical).
 # =============================================================================
-
-homeassistant:
-  customize:
-    # Duplicate one of the mode blocks below when adding a new cubbies_set_mode_*
-    # wrapper so Google Assistant stays aligned with Pico controls.
-    script.cubbies_on:
-      google_assistant: true
-      google_assistant_name: "Cubbies On"
-      google_assistant_aliases:
-        - "Turn on the cubbies"
-        - "Cubbies lights on"
-        - "Switch on cubbies"
-    script.cubbies_off:
-      google_assistant: true
-      google_assistant_name: "Cubbies Off"
-      google_assistant_aliases:
-        - "Turn off the cubbies"
-        - "Cubbies lights off"
-        - "Shut down cubbies"
-    script.cubbies_toggle:
-      google_assistant: true
-      google_assistant_name: "Toggle Cubbies"
-      google_assistant_aliases:
-        - "Toggle cubbies lights"
-        - "Flip cubbies lights"
-        - "Cubbies lights toggle"
-    script.cubbies_brighter:
-      google_assistant: true
-      google_assistant_name: "Cubbies Brighter"
-      google_assistant_aliases:
-        - "Brighten the cubbies"
-        - "Increase cubbies brightness"
-        - "Cubbies lights brighter"
-    script.cubbies_dimmer:
-      google_assistant: true
-      google_assistant_name: "Cubbies Dimmer"
-      google_assistant_aliases:
-        - "Dim the cubbies"
-        - "Lower cubbies brightness"
-        - "Cubbies lights dimmer"
-    script.cubbies_next_mode:
-      google_assistant: true
-      google_assistant_name: "Cubbies Next Mode"
-      google_assistant_aliases:
-        - "Next cubbies mode"
-        - "Cycle cubbies mode"
-        - "Advance cubbies mode"
-    script.cubbies_prev_mode:
-      google_assistant: true
-      google_assistant_name: "Cubbies Previous Mode"
-      google_assistant_aliases:
-        - "Previous cubbies mode"
-        - "Back cubbies mode"
-        - "Go back cubbies mode"
-    script.cubbies_set_mode_tv:
-      google_assistant: true
-      google_assistant_name: "Cubbies TV Mode"
-      google_assistant_aliases:
-        - "Set cubbies to TV"
-        - "Cubbies watch TV"
-        - "TV cubbies lights"
-    script.cubbies_set_mode_chill:
-      google_assistant: true
-      google_assistant_name: "Cubbies Chill Mode"
-      google_assistant_aliases:
-        - "Set cubbies to chill"
-        - "Cubbies relax lighting"
-        - "Chill cubbies lights"
-    script.cubbies_set_mode_party:
-      google_assistant: true
-      google_assistant_name: "Cubbies Party Mode"
-      google_assistant_aliases:
-        - "Set cubbies to party"
-        - "Party cubbies lights"
-        - "Cubbies party lighting"
-    script.cubbies_set_mode_game_day:
-      google_assistant: true
-      google_assistant_name: "Cubbies Game Day"
-      google_assistant_aliases:
-        - "Set cubbies to game day"
-        - "Game day cubbies lights"
-        - "Cubbies Seahawks mode"
 
 script:
 
-  cubbies_apply_mode:
-    alias: Cubbies - Apply Mode (wrapper)
-    mode: restart
-    fields:
-      mode:
-        description: Mode key present in input_select.shelf_mode
-        example: tv
-    sequence:
-      - variables:
-          desired: "{{ (mode | default(states('input_select.shelf_mode'))) | lower }}"
-          opts: "{{ state_attr('input_select.shelf_mode', 'options') or [] }}"
-          target_mode: "{{ desired if desired in opts else 'tv' }}"
-      - service: "script.shelf_set_mode_{{ target_mode }}"
-
-  cubbies_set_mode_tv: &cubbies_mode_wrapper
+  # ---- Cubbies Mode wrappers ----
+  cubbies_set_mode_tv:
     alias: Cubbies - Set Mode TV
     mode: restart
-    variables:
-      target_mode: tv
     sequence:
-      - service: script.cubbies_apply_mode
-        data:
-          mode: "{{ target_mode }}"
+      - service: script.shelf_set_mode_tv
 
   cubbies_set_mode_chill:
-    <<: *cubbies_mode_wrapper
     alias: Cubbies - Set Mode Chill
-    variables:
-      target_mode: chill
+    mode: restart
+    sequence:
+      - service: script.shelf_set_mode_chill
 
   cubbies_set_mode_party:
-    <<: *cubbies_mode_wrapper
     alias: Cubbies - Set Mode Party
-    variables:
-      target_mode: party
+    mode: restart
+    sequence:
+      - service: script.shelf_set_mode_party
 
   cubbies_set_mode_game_day:
-    <<: *cubbies_mode_wrapper
     alias: Cubbies - Set Mode Game Day
-    variables:
-      target_mode: game_day
+    mode: restart
+    sequence:
+      - service: script.shelf_set_mode_game_day
 
+  # ---- Cubbies brightness wrappers ----
   cubbies_brighter:
     alias: Cubbies Brighter
     mode: single
@@ -162,8 +63,9 @@ script:
     sequence:
       - service: script.shelves_brightness_step
         data:
-          delta: "{{ delta | int }}"
+          delta: "{{ delta|int }}"
 
+  # ---- Cubbies mode cyclers ----
   cubbies_next_mode:
     alias: Cubbies - Next Mode
     mode: single
@@ -176,37 +78,35 @@ script:
     sequence:
       - service: script.shelves_prev_mode
 
+  # ---- Simple on/off/toggle helpers (GA/Pico friendly) ----
   cubbies_on:
     alias: Cubbies - On
     mode: restart
     sequence:
       - service: light.turn_on
-        target:
-          entity_id: light.cubbies_all
+        target: { entity_id: light.cubbies_all }
 
   cubbies_off:
     alias: Cubbies - Off
     mode: restart
     sequence:
       - service: light.turn_off
-        target:
-          entity_id: light.cubbies_all
+        target: { entity_id: light.cubbies_all }
 
   cubbies_toggle:
     alias: Cubbies - Toggle
     mode: restart
     sequence:
       - service: light.toggle
-        target:
-          entity_id: light.cubbies_all
+        target: { entity_id: light.cubbies_all }
 
+  # ---- (Optional) direct color helpers targeting the Cubbies group ----
   cubbies_set_blue_dim:
     alias: Cubbies - Blue Dim
     mode: restart
     sequence:
       - service: light.turn_on
-        target:
-          entity_id: light.cubbies_all
+        target: { entity_id: light.cubbies_all }
         data:
           rgbw_color: [0, 120, 255, 0]
           brightness_pct: 8
@@ -217,8 +117,7 @@ script:
     mode: restart
     sequence:
       - service: light.turn_on
-        target:
-          entity_id: light.cubbies_all
+        target: { entity_id: light.cubbies_all }
         data:
           rgbw_color: [0, 0, 0, 255]
           brightness_pct: 10
