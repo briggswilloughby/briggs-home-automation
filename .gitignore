@@ -21,3 +21,21 @@ Thumbs.db
 id_ed25519*
 *.pub
 githubssh*
+# --- Home Assistant runtime / local secrets ---
+.HA_VERSION
+home-assistant_v2.db*
+*.db
+*.db-shm
+*.db-wal
+home-assistant.log*
+*.fault
+.cloud/
+.storage/
+secrets.yaml
+deps/
+tts/
+media/*
+www/*
+blueprints/
+scenes.yaml
+scripts.yaml
