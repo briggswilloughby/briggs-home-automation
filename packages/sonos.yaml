@@ -24,11 +24,35 @@ script:
         description: One or more media_player.*
     sequence:
       - variables:
-          plist: >
-            {{ players if players is iterable and players is not string else [players] }}
-      - service: sonos.snapshot
-        target: { entity_id: "{{ plist }}" }
-        data: { with_group: true }
+          plist: >-
+            {% set candidate = players %}
+            {% if candidate is mapping and 'entity_id' in candidate %}
+              {% set candidate = candidate.entity_id %}
+            {% endif %}
+            {% if candidate is iterable and candidate is not string %}
+              {{ candidate | list }}
+            {% else %}
+              {% set matches = (candidate | string) | regex_findall('media_player\\.[\w_]+') %}
+              {{ matches if matches else ([candidate] if candidate is not none else []) }}
+            {% endif %}
+      - repeat:
+          for_each: "{{ plist | list }}"
+          sequence:
+            - variables:
+                player_id: >-
+                  {% set item = repeat.item %}
+                  {% if item is mapping and 'entity_id' in item %}
+                    {{ item.entity_id }}
+                  {% elif item is string %}
+                    {% set match = item | regex_search('media_player\\.[\w_]+') %}
+                    {{ match if match else item }}
+                  {% else %}
+                    {{ item | string }}
+                  {% endif %}
+            - service: sonos.snapshot
+              data:
+                entity_id: "{{ player_id }}"
+                with_group: true
 
   sonos_restore_snapshot:
     alias: "Sonos - Restore Snapshot"
@@ -38,11 +62,35 @@ script:
         description: One or more media_player.*
     sequence:
       - variables:
-          plist: >
-            {{ players if players is iterable and players is not string else [players] }}
-      - service: sonos.restore
-        target: { entity_id: "{{ plist }}" }
-        data: { with_group: true }
+          plist: >-
+            {% set candidate = players %}
+            {% if candidate is mapping and 'entity_id' in candidate %}
+              {% set candidate = candidate.entity_id %}
+            {% endif %}
+            {% if candidate is iterable and candidate is not string %}
+              {{ candidate | list }}
+            {% else %}
+              {% set matches = (candidate | string) | regex_findall('media_player\\.[\w_]+') %}
+              {{ matches if matches else ([candidate] if candidate is not none else []) }}
+            {% endif %}
+      - repeat:
+          for_each: "{{ plist | list }}"
+          sequence:
+            - variables:
+                player_id: >-
+                  {% set item = repeat.item %}
+                  {% if item is mapping and 'entity_id' in item %}
+                    {{ item.entity_id }}
+                  {% elif item is string %}
+                    {% set match = item | regex_search('media_player\\.[\w_]+') %}
+                    {{ match if match else item }}
+                  {% else %}
+                    {{ item | string }}
+                  {% endif %}
+            - service: sonos.restore
+              data:
+                entity_id: "{{ player_id }}"
+                with_group: true
 
   sonos_play:
     alias: "Sonos - Play Favorite/URI"
