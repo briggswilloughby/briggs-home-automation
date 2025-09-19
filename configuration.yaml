@@ -1,0 +1,21 @@
+homeassistant:
+  name: Briggs Home Assistant
+  packages: !include_dir_named home-assistant/packages
+
+# Standard built-ins (cloud, mobile_app, history, etc.)
+default_config:
+
+# Keep logs quiet unless needed
+logger:
+  default: warning
+
+# Optional: TTS so media players can speak
+tts:
+  - platform: google_translate
+
+# Keep these includes so the UI can manage scripts/scenes if you ever use them
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+homeassistant:
+  packages: !include_dir_named packages
