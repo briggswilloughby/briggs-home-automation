@@ -106,7 +106,7 @@ script:
         data:
           option: "{{ target_scene }}"
 
-  office_cync_scene_focus: &office_scene
+  office_cync_scene_focus:
     alias: Office Cync - Scene Focus
     mode: restart
     sequence:
@@ -115,16 +115,16 @@ script:
           scene: focus
 
   office_cync_scene_calm:
-    <<: *office_scene
     alias: Office Cync - Scene Calm
+    mode: restart
     sequence:
       - service: script.office_cync_apply_scene
         data:
           scene: calm
 
   office_cync_scene_night:
-    <<: *office_scene
     alias: Office Cync - Scene Night
+    mode: restart
     sequence:
       - service: script.office_cync_apply_scene
         data:

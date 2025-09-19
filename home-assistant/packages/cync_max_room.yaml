@@ -105,7 +105,7 @@ script:
         data:
           option: "{{ target_scene }}"
 
-  max_cync_scene_homework: &max_scene
+  max_cync_scene_homework:
     alias: Max Cync - Scene Homework
     mode: restart
     sequence:
@@ -114,16 +114,16 @@ script:
           scene: homework
 
   max_cync_scene_play:
-    <<: *max_scene
     alias: Max Cync - Scene Play
+    mode: restart
     sequence:
       - service: script.max_cync_apply_scene
         data:
           scene: play
 
   max_cync_scene_sleep:
-    <<: *max_scene
     alias: Max Cync - Scene Sleep
+    mode: restart
     sequence:
       - service: script.max_cync_apply_scene
         data:

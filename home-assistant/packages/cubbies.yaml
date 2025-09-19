@@ -112,33 +112,37 @@ script:
           target_mode: "{{ desired if desired in opts else 'tv' }}"
       - service: "script.shelf_set_mode_{{ target_mode }}"
 
-  cubbies_set_mode_tv: &cubbies_mode_wrapper
+  cubbies_set_mode_tv:
     alias: Cubbies - Set Mode TV
     mode: restart
-    variables:
-      target_mode: tv
     sequence:
       - service: script.cubbies_apply_mode
         data:
-          mode: "{{ target_mode }}"
+          mode: tv
 
   cubbies_set_mode_chill:
-    <<: *cubbies_mode_wrapper
     alias: Cubbies - Set Mode Chill
-    variables:
-      target_mode: chill
+    mode: restart
+    sequence:
+      - service: script.cubbies_apply_mode
+        data:
+          mode: chill
 
   cubbies_set_mode_party:
-    <<: *cubbies_mode_wrapper
     alias: Cubbies - Set Mode Party
-    variables:
-      target_mode: party
+    mode: restart
+    sequence:
+      - service: script.cubbies_apply_mode
+        data:
+          mode: party
 
   cubbies_set_mode_game_day:
-    <<: *cubbies_mode_wrapper
     alias: Cubbies - Set Mode Game Day
-    variables:
-      target_mode: game_day
+    mode: restart
+    sequence:
+      - service: script.cubbies_apply_mode
+        data:
+          mode: game_day
 
   cubbies_brighter:
     alias: Cubbies Brighter
