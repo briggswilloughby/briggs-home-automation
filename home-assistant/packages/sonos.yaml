@@ -380,7 +380,7 @@ script:
           sequence:
             - service: media_player.join
               data:
-                entity_id: "{{ coordinator }}"   # coordinator/master
+                entity_id: "{{ coordinator }}"
                 group_members:
                   - "{{ repeat.item }}"            # members to add
       - wait_template: >
