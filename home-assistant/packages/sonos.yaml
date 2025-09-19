@@ -169,9 +169,13 @@ script:
       - variables:
           plist: >
             {{ players if players is iterable and players is not string else [players] }}
-      - service: sonos.snapshot
-        target: { entity_id: "{{ plist }}" }
-        data: { with_group: true }
+      - repeat:
+          for_each: "{{ plist }}"
+          sequence:
+            - service: sonos.snapshot
+              data:
+                entity_id: "{{ repeat.item }}"
+                with_group: true
 
   sonos_restore_snapshot:
     alias: "Sonos - Restore Snapshot"
@@ -183,9 +187,13 @@ script:
       - variables:
           plist: >
             {{ players if players is iterable and players is not string else [players] }}
-      - service: sonos.restore
-        target: { entity_id: "{{ plist }}" }
-        data: { with_group: true }
+      - repeat:
+          for_each: "{{ plist }}"
+          sequence:
+            - service: sonos.restore
+              data:
+                entity_id: "{{ repeat.item }}"
+                with_group: true
 
   sonos_play:
     alias: "Sonos - Play Favorite/URI"
@@ -204,21 +212,23 @@ script:
           - conditions: "{{ volume is defined }}"
             sequence:
               - service: media_player.volume_set
-                target: { entity_id: "{{ player }}" }
-                data: { volume_level: "{{ volume|float }}" }
+                data:
+                  entity_id: "{{ player }}"
+                  volume_level: "{{ volume|float }}"
       - choose:
           - conditions: "{{ favorite is defined and favorite|length > 0 }}"
             sequence:
               - service: media_player.select_source
-                target: { entity_id: "{{ player }}" }
-                data: { source: "{{ favorite }}" }
+                data:
+                  entity_id: "{{ player }}"
+                  source: "{{ favorite }}"
         default:
           - choose:
               - conditions: "{{ uri is defined and uri|length > 0 }}"
                 sequence:
                   - service: media_player.play_media
-                    target: { entity_id: "{{ player }}" }
                     data:
+                      entity_id: "{{ player }}"
                       media_content_id: "{{ uri }}"
                       media_content_type: music
 
@@ -239,8 +249,9 @@ script:
             {% else %}{{ (d|float(7))/100 }}{% endif %}
           newv: "{{ [1, [0, cur + step]|max ]|min }}"
       - service: media_player.volume_set
-        target: { entity_id: "{{ player }}" }
-        data: { volume_level: "{{ newv }}" }
+        data:
+          entity_id: "{{ player }}"
+          volume_level: "{{ newv }}"
 
   sonos_apply_baseline:
     alias: "Sonos - Apply Baseline Volume"
@@ -262,9 +273,13 @@ script:
           plist: >
             {{ raw if raw is iterable and raw is not string else [raw] }}
           base: "{{ (volume | default(0.15)) | float }}"
-      - service: media_player.volume_set
-        target: { entity_id: "{{ plist }}" }
-        data: { volume_level: "{{ base }}" }
+      - repeat:
+          for_each: "{{ plist }}"
+          sequence:
+            - service: media_player.volume_set
+              data:
+                entity_id: "{{ repeat.item }}"
+                volume_level: "{{ base }}"
 
   sonos_volume_up_all:
     alias: "Sonos - Volume Up All"
@@ -328,16 +343,18 @@ script:
           _settle: "{{ (settle_ms | default(400) | int) / 1000 }}"
       # 1) Promote DEST to its own coordinator (safe if already solo)
       - service: media_player.unjoin
-        target: { entity_id: "{{ _dest }}" }
+        data:
+          entity_id: "{{ _dest }}"
       - delay: { seconds: "{{ _settle }}" }
       # 2) Unjoin SOURCE from any prior group
       - service: media_player.unjoin
-        target: { entity_id: "{{ _source }}" }
+        data:
+          entity_id: "{{ _source }}"
       - delay: { seconds: "{{ _settle }}" }
       # 3) Join SOURCE into DEST's group (DEST remains coordinator)
       - service: media_player.join
-        target: { entity_id: "{{ _dest }}" }     # coordinator/master
         data:
+          entity_id: "{{ _dest }}"     # coordinator/master
           group_members:
             - "{{ _source }}"                    # member to add
       - wait_template: >
@@ -358,10 +375,14 @@ script:
       - variables:
           add_list: >
             {{ members if members is iterable and members is not string else [members] }}
-      - service: media_player.join
-        target: { entity_id: "{{ coordinator }}" }   # coordinator/master
-        data:
-          group_members: "{{ add_list }}"            # members to add
+      - repeat:
+          for_each: "{{ add_list }}"
+          sequence:
+            - service: media_player.join
+              data:
+                entity_id: "{{ coordinator }}"   # coordinator/master
+                group_members:
+                  - "{{ repeat.item }}"            # members to add
       - wait_template: >
           {{ state_attr(coordinator, 'group_members') is defined
              and (add_list | select('in', state_attr(coordinator, 'group_members')) | list | length)
@@ -399,8 +420,9 @@ script:
           - conditions: "{{ newv < cur }}"
             sequence:
               - service: media_player.volume_set
-                target: { entity_id: "{{ player }}" }
-                data: { volume_level: "{{ newv }}" }
+                data:
+                  entity_id: "{{ player }}"
+                  volume_level: "{{ newv }}"
 
   sonos_mute_all:
     alias: "Sonos - Mute All"
@@ -447,21 +469,39 @@ script:
           plist: >
             {{ players if players is iterable and players is not string else [players] }}
           tts: "{{ tts_service if tts_service is defined else 'tts.google_translate_say' }}"
-      - service: script.sonos_snapshot
-        data: { players: "{{ plist }}" }
+          announce_target: "{{ plist[0] if plist|length > 0 else none }}"
+      - repeat:
+          for_each: "{{ plist }}"
+          sequence:
+            - service: sonos.snapshot
+              data:
+                entity_id: "{{ repeat.item }}"
+                with_group: true
       - choose:
           - conditions: "{{ volume is defined }}"
             sequence:
-              - service: media_player.volume_set
-                target: { entity_id: "{{ plist }}" }
-                data: { volume_level: "{{ volume|float }}" }
-      - service: "{{ tts }}"
-        data:
-          entity_id: "{{ plist[0] }}"
-          message: "{{ message }}"
+              - repeat:
+                  for_each: "{{ plist }}"
+                  sequence:
+                    - service: media_player.volume_set
+                      data:
+                        entity_id: "{{ repeat.item }}"
+                        volume_level: "{{ volume|float }}"
+      - choose:
+          - conditions: "{{ announce_target is not none }}"
+            sequence:
+              - service: "{{ tts }}"
+                data:
+                  entity_id: "{{ announce_target }}"
+                  message: "{{ message }}"
       - delay: "00:00:04"
-      - service: script.sonos_restore_snapshot
-        data: { players: "{{ plist }}" }
+      - repeat:
+          for_each: "{{ plist }}"
+          sequence:
+            - service: sonos.restore
+              data:
+                entity_id: "{{ repeat.item }}"
+                with_group: true
 
   # ---------- GROUP PRESETS / TRANSFERS ----------
   tv_plus_kitchen:
