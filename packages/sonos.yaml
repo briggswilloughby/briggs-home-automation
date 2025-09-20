@@ -405,13 +405,11 @@ script:
           - conditions: "{{ volume is defined }}"
             sequence:
               - repeat:
-                  for_each:
-                    template: "{{ players_list }}"
+                  for_each: players_list
                   sequence:
                     - service: media_player.volume_set
                       target:
-                        entity_id:
-                          template: "{{ repeat.item }}"
+                        entity_id: "{{ repeat.item }}"
                       data:
                         volume_level: "{{ volume | float }}"
       - service: "{{ tts }}"
