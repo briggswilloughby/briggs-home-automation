@@ -107,7 +107,7 @@ script:
         data:
           option: "{{ target_scene }}"
 
-  bar_lifx_scene_bright: &bar_lifx_scene
+  bar_lifx_scene_bright:
     alias: Bar LIFX - Scene Bright
     mode: restart
     sequence:
@@ -116,16 +116,16 @@ script:
           scene: bright
 
   bar_lifx_scene_relax:
-    <<: *bar_lifx_scene
     alias: Bar LIFX - Scene Relax
+    mode: restart
     sequence:
       - service: script.bar_lifx_apply_scene
         data:
           scene: relax
 
   bar_lifx_scene_party:
-    <<: *bar_lifx_scene
     alias: Bar LIFX - Scene Party
+    mode: restart
     sequence:
       - service: script.bar_lifx_apply_scene
         data:

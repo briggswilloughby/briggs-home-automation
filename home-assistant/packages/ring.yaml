@@ -17,35 +17,36 @@ script:
     alias: Sonos - Doorbell Chime (Kitchen + Patio)
     mode: single
     variables:
-      players:
+      players: &doorbell_players
         - media_player.kitchen
         - media_player.patio
       chime_url: "media-source://media_source/local/dingdong.mp3"
       chime_vol: 0.40
       chime_len: "00:00:03"
     sequence:
-      - service: sonos.snapshot
-        target: { entity_id: "{{ players }}" }
-        data: { with_group: true }
+      - service: script.sonos_snapshot
+        data:
+          players: *doorbell_players
       - repeat:
-          for_each: "{{ players }}"
+          for_each: *doorbell_players
           sequence:
             - service: media_player.volume_set
-              target: { entity_id: "{{ repeat.item }}" }
-              data: { volume_level: "{{ chime_vol }}" }
+              data:
+                entity_id: "{{ repeat.item }}"
+                volume_level: "{{ chime_vol }}"
       - repeat:
-          for_each: "{{ players }}"
+          for_each: *doorbell_players
           sequence:
             - service: media_player.play_media
-              target: { entity_id: "{{ repeat.item }}" }
               data:
+                entity_id: "{{ repeat.item }}"
                 media_content_id: "{{ chime_url }}"
                 media_content_type: music
             - delay: "00:00:00.20"
       - delay: "{{ chime_len }}"
-      - service: sonos.restore
-        target: { entity_id: "{{ players }}" }
-        data: { with_group: true }
+      - service: script.sonos_restore_snapshot
+        data:
+          players: *doorbell_players
 
 automation:
   - alias: Ring → Ding-Dong + Shelves Flash
@@ -58,7 +59,9 @@ automation:
       - condition: template
         value_template: "{{ trigger.to_state.attributes.get('event_type') == 'ding' }}"
     action:
-      - service: script.shelves_doorbell_flash
-      - delay: "00:00:00.15"     # tiny stagger so Shellys start before audio
-      - service: script.sonos_doorbell_chime
+      - parallel:
+          - sequence:
+              - service: script.shelves_doorbell_flash
+          - sequence:
+              - service: script.sonos_doorbell_chime
       - delay: "00:00:04"        # absorb duplicates
