@@ -65,7 +65,8 @@ script:
       - condition: template
         value_template: "{{ player_list | length > 0 }}"
       - repeat:
-          for_each: player_list
+          for_each:
+            template: "{{ player_list }}"
           sequence:
             - service: sonos.snapshot
               target:
@@ -120,7 +121,8 @@ script:
       - condition: template
         value_template: "{{ player_list | length > 0 }}"
       - repeat:
-          for_each: player_list
+          for_each:
+            template: "{{ player_list }}"
           sequence:
             - service: sonos.restore
               target:
@@ -397,7 +399,8 @@ script:
         value_template: "{{ players_list | length > 0 }}"
       - service: script.sonos_snapshot
         data:
-          players: players_list
+          players:
+            template: "{{ players_list }}"
       - choose:
           - conditions: "{{ volume is defined }}"
             sequence:
@@ -417,7 +420,8 @@ script:
       - delay: "00:00:04"
       - service: script.sonos_restore_snapshot
         data:
-          players: players_list
+          players:
+            template: "{{ players_list }}"
 
   # ---------- GROUP PRESETS / TRANSFERS ----------
   tv_plus_kitchen:
