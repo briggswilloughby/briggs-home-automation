@@ -64,7 +64,7 @@ script:
             {% endfor %}
             {{ ns.result }}
       - condition: template
-        value_template: "{{ players | count > 0 }}"
+        value_template: "{{ players | length > 0 }}"
       - service: sonos.snapshot
         target:
           entity_id: "{{ players }}"
