@@ -401,11 +401,14 @@ script:
       - choose:
           - conditions: "{{ volume is defined }}"
             sequence:
-              - service: media_player.volume_set
-                target:
-                  entity_id: players_list
-                data:
-                  volume_level: "{{ volume | float }}"
+              - repeat:
+                  for_each: players_list
+                  sequence:
+                    - service: media_player.volume_set
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        volume_level: "{{ volume | float }}"
       - service: "{{ tts }}"
         target:
           entity_id: "{{ players_list[0] }}"
