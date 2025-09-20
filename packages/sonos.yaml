@@ -12,7 +12,9 @@ homeassistant:
     script.move_tv_to_kitchen:
       google_assistant: true
       google_assistant_name: "TV in Kitchen"
-
+    script.unjoin_kitchen:
+      google_assistant: true
+      google_assistant_name: "Unjoin Kitchen"
 script:
 
   # ---------- GENERIC HELPERS ----------
