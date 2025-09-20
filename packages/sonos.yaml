@@ -26,7 +26,7 @@ script:
         description: One or more media_player.*
     sequence:
       - variables:
-          player_list_json: >-
+          player_list: |
             {% set candidate = players | default([], true) %}
             {% if candidate is mapping and 'entity_id' in candidate %}
               {% set candidate = candidate.entity_id %}
@@ -61,11 +61,11 @@ script:
                 {% set _ = ns.result.append(item | string) %}
               {% endif %}
             {% endfor %}
-            {{ ns.result | to_json }}
+            {{ ns.result | list }}
       - condition: template
-        value_template: "{{ (player_list_json | from_json) | length > 0 }}"
+        value_template: "{{ player_list | length > 0 }}"
       - repeat:
-          for_each: "{{ player_list_json | from_json }}"
+          for_each: player_list
           sequence:
             - service: sonos.snapshot
               target:
@@ -81,7 +81,7 @@ script:
         description: One or more media_player.*
     sequence:
       - variables:
-          player_list_json: >-
+          player_list: |
             {% set candidate = players | default([], true) %}
             {% if candidate is mapping and 'entity_id' in candidate %}
               {% set candidate = candidate.entity_id %}
@@ -116,11 +116,11 @@ script:
                 {% set _ = ns.result.append(item | string) %}
               {% endif %}
             {% endfor %}
-            {{ ns.result | to_json }}
+            {{ ns.result | list }}
       - condition: template
-        value_template: "{{ (player_list_json | from_json) | length > 0 }}"
+        value_template: "{{ player_list | length > 0 }}"
       - repeat:
-          for_each: "{{ player_list_json | from_json }}"
+          for_each: player_list
           sequence:
             - service: sonos.restore
               target:
@@ -250,7 +250,7 @@ script:
         description: List of media_player.* to add
     sequence:
       - variables:
-          members_json: >-
+          members_list: |
             {% set raw = members | default([], true) %}
             {% if raw is mapping and 'entity_id' in raw %}
               {% set raw = raw.entity_id %}
@@ -285,19 +285,19 @@ script:
                 {% set _ = ns.result.append(item | string) %}
               {% endif %}
             {% endfor %}
-            {{ ns.result | to_json }}
+            {{ ns.result | list }}
       - choose:
-          - conditions: "{{ (members_json | from_json) | length > 0 }}"
+          - conditions: "{{ members_list | length > 0 }}"
             sequence:
               - service: media_player.join
                 target:
                   entity_id: "{{ coordinator }}"            # coordinator/master
                 data:
-                  group_members: "{{ members_json | from_json }}"            # members to add
+                  group_members: members_list            # members to add
               - wait_template: >
                   {{ state_attr(coordinator, 'group_members') is defined
-                     and ((members_json | from_json) | select('in', state_attr(coordinator, 'group_members')) | list | length)
-                         == ((members_json | from_json) | length) }}
+                     and (members_list | select('in', state_attr(coordinator, 'group_members')) | list | length)
+                         == (members_list | length) }}
                 timeout: "00:00:03"
                 continue_on_timeout: true
 
@@ -356,7 +356,7 @@ script:
         description: TTS service (default tts.google_translate_say)
     sequence:
       - variables:
-          players_json: >-
+          players_list: |
             {% set candidate = players | default([], true) %}
             {% if candidate is mapping and 'entity_id' in candidate %}
               {% set candidate = candidate.entity_id %}
@@ -391,30 +391,30 @@ script:
                 {% set _ = ns.result.append(item | string) %}
               {% endif %}
             {% endfor %}
-            {{ ns.result | to_json }}
+            {{ ns.result | list }}
           tts: "{{ tts_service if tts_service is defined else 'tts.google_translate_say' }}"
       - condition: template
-        value_template: "{{ (players_json | from_json) | length > 0 }}"
+        value_template: "{{ players_list | length > 0 }}"
       - service: script.sonos_snapshot
         data:
-          players: "{{ players_json | from_json }}"
+          players: players_list
       - choose:
           - conditions: "{{ volume is defined }}"
             sequence:
               - service: media_player.volume_set
                 target:
-                  entity_id: "{{ players_json | from_json }}"
+                  entity_id: players_list
                 data:
                   volume_level: "{{ volume | float }}"
       - service: "{{ tts }}"
         target:
-          entity_id: "{{ (players_json | from_json)[0] }}"
+          entity_id: "{{ players_list[0] }}"
         data:
           message: "{{ message }}"
       - delay: "00:00:04"
       - service: script.sonos_restore_snapshot
         data:
-          players: "{{ players_json | from_json }}"
+          players: players_list
 
   # ---------- GROUP PRESETS / TRANSFERS ----------
   tv_plus_kitchen:
