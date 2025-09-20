@@ -65,7 +65,8 @@ script:
       - condition: template
         value_template: "{{ player_list | length > 0 }}"
       - repeat:
-          for_each: "{{ player_list }}"
+          for_each:
+            template: "{{ player_list }}"
           sequence:
             - service: sonos.snapshot
               target:
@@ -120,7 +121,8 @@ script:
       - condition: template
         value_template: "{{ player_list | length > 0 }}"
       - repeat:
-          for_each: "{{ player_list }}"
+          for_each:
+            template: "{{ player_list }}"
           sequence:
             - service: sonos.restore
               target:
@@ -403,11 +405,13 @@ script:
           - conditions: "{{ volume is defined }}"
             sequence:
               - repeat:
-                  for_each: "{{ players_list }}"
+                  for_each:
+                    template: "{{ players_list }}"
                   sequence:
                     - service: media_player.volume_set
                       target:
-                        entity_id: "{{ repeat.item }}"
+                        entity_id:
+                          template: "{{ repeat.item }}"
                       data:
                         volume_level: "{{ volume | float }}"
       - service: "{{ tts }}"
@@ -473,20 +477,30 @@ script:
           - conditions: "{{ state_attr('media_player.family_room', 'source') == 'TV' }}"
             sequence:
               - choose:
-                  - conditions: "{{ states('script.tv_plus_kitchen') != 'unknown' }}"
+                  - conditions: "{{ states('script.tv_plus_kitchen') not in ['unknown', 'unavailable'] }}"
                     sequence:
                       - service: script.turn_on
                         target:
                           entity_id: script.tv_plus_kitchen
+                      - wait_template: >
+                          {{ state_attr('media_player.family_room', 'group_members') is defined
+                             and 'media_player.kitchen' in state_attr('media_player.family_room', 'group_members') }}
+                        timeout: "00:00:03"
+                        continue_on_timeout: true
+              - choose:
+                  - conditions: >
+                      {{ state_attr('media_player.family_room', 'group_members') is defined
+                         and 'media_player.kitchen' in state_attr('media_player.family_room', 'group_members') }}
+                    sequence: []
                 default:
                   - service: script.sonos_group_with
                     data:
                       coordinator: media_player.family_room
                       members:
                         - media_player.kitchen
-                  - service: media_player.volume_set
-                    target: { entity_id: media_player.kitchen }
-                    data: { volume_level: 0.10 }
+              - service: media_player.volume_set
+                target: { entity_id: media_player.kitchen }
+                data: { volume_level: 0.10 }
         default:
           - service: script.sonos_move
             data: { source: media_player.family_room, dest: media_player.kitchen }
