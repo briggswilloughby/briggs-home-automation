@@ -85,6 +85,7 @@ script:
               target:
                 entity_id: "{{ repeat.item }}"
               data:
+                entity_id: "{{ repeat.item }}"
                 media_content_id: "{{ chime_url }}"
                 media_content_type: music
             - delay: "00:00:00.20"
@@ -130,6 +131,7 @@ automation:
              and (kind is none or kind in ['ding', 'doorbell', 'on_demand_ding', 'remote_ding'])
              and (state is none or state in valid_states or button_state in ['ringing', 'pressed', 'start'])
              and motion_clear }}
+
     action:
       - service: script.shelves_doorbell_flash
       - delay: "00:00:00.15"     # tiny stagger so Shellys start before audio
