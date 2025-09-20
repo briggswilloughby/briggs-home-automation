@@ -6,6 +6,7 @@
 #   - Grouping now uses generic media_player.join/unjoin (current HA behavior).
 #   - Snapshots/restores still use sonos.snapshot/sonos.restore with groups.
 #   - Move: promote DEST to coordinator, unjoin SOURCE, then join SOURCE→DEST.
+# LEARNING: Home Assistant validators expect repeat.for_each templates to render plain strings.
 # =============================================================================
 homeassistant:
   customize:
@@ -289,11 +290,15 @@ script:
       - choose:
           - conditions: "{{ members_list | length > 0 }}"
             sequence:
-              - service: media_player.join
-                target:
-                  entity_id: "{{ coordinator }}"            # coordinator/master
-                data:
-                  group_members: members_list            # members to add
+              - repeat:
+                  for_each: "{{ members_list }}"
+                  sequence:
+                    - service: media_player.join
+                      target:
+                        entity_id: "{{ coordinator }}"            # coordinator/master
+                      data:
+                        group_members:
+                          - "{{ repeat.item }}"            # member to add
               - wait_template: >
                   {{ state_attr(coordinator, 'group_members') is defined
                      and (members_list | select('in', state_attr(coordinator, 'group_members')) | list | length)
