@@ -333,8 +333,44 @@ script:
         description: "transition seconds (float)"
     sequence:
       - variables:
-          grp: "{{ group | default('light.shelves_all') }}"
-          targets: "{{ expand(grp) | map(attribute='entity_id') | list }}"
+          grp: "{{ group | default('light.shelves_all', true) }}"
+          expanded: "{{ expand(grp) | map(attribute='entity_id') | list }}"
+          targets_json: >-
+            {% set base = expanded if expanded else grp %}
+            {% if base is mapping and 'entity_id' in base %}
+              {% set base = base.entity_id %}
+            {% endif %}
+            {% if base is none %}
+              {% set items = [] %}
+            {% elif base is iterable and base is not string %}
+              {% set items = base | list %}
+            {% else %}
+              {% set items = [base] %}
+            {% endif %}
+            {% set ns = namespace(result=[]) %}
+            {% for item in items %}
+              {% if item is mapping and 'entity_id' in item %}
+                {% set inner = item.entity_id %}
+                {% if inner is iterable and inner is not string %}
+                  {% for entity in inner %}
+                    {% if entity is not none %}
+                      {% set _ = ns.result.append(entity | string) %}
+                    {% endif %}
+                  {% endfor %}
+                {% elif inner is not none %}
+                  {% set _ = ns.result.append(inner | string) %}
+                {% endif %}
+              {% elif item is iterable and item is not string %}
+                {% for entity in item %}
+                  {% if entity is not none %}
+                    {% set _ = ns.result.append(entity | string) %}
+                  {% endif %}
+                {% endfor %}
+              {% elif item is not none %}
+                {% set _ = ns.result.append(item | string) %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.result | to_json }}
           r: "{{ rgbw[0] | int }}"
           g: "{{ rgbw[1] | int }}"
           b: "{{ rgbw[2] | int }}"
@@ -342,10 +378,11 @@ script:
           bp: "{{ bright | int }}"
           tr: "{{ trans | float(0) }}"
       - repeat:
-          for_each: "{{ targets }}"
+          for_each: "{{ targets_json | from_json }}"
           sequence:
             - service: light.turn_on
-              target: { entity_id: "{{ repeat.item }}" }
+              target:
+                entity_id: "{{ repeat.item }}"
               data:
                 rgbw_color: [ "{{ r }}", "{{ g }}", "{{ b }}", "{{ w }}" ]
                 brightness_pct: "{{ bp }}"

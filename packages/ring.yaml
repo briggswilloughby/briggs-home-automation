@@ -5,12 +5,12 @@
 # DEPENDS ON:
 #   - Shelly shelves package providing script.shelves_doorbell_flash
 #   - Sonos players: media_player.kitchen, media_player.patio
-#   - File at /config/www/dingdong.mp3 → http://<HA-IP>:8123/local/dingdong.mp3
+#   - File at /config/www/dingdong.mp3 (served via media-source://media_source/local/dingdong.mp3)
 #
 # NOTES:
 #   - All steps use `service:` (canonical). UI may say “Actions”, YAML uses `service`.
-#   - If you prefer Media Source, switch chime_url to
-#       media-source://media_source/local/dingdong.mp3
+#   - If you prefer a direct URL, swap chime_url to
+#       http://<HA-IP>:8123/local/dingdong.mp3
 #     and keep media_content_type: music.
 # =============================================================================
 
@@ -22,32 +22,78 @@ script:
       players:
         - media_player.kitchen
         - media_player.patio
-      chime_url: "http://192.168.68.86:8123/local/dingdong.mp3"  # /config/www/dingdong.mp3
+      chime_url: "media-source://media_source/local/dingdong.mp3"  # /config/www/dingdong.mp3
       chime_vol: 0.40
       chime_len: "00:00:03"
     sequence:
+      - variables:
+          players_json: >-
+            {% set candidate = players | default([], true) %}
+            {% if candidate is mapping and 'entity_id' in candidate %}
+              {% set candidate = candidate.entity_id %}
+            {% endif %}
+            {% if candidate is none %}
+              {% set items = [] %}
+            {% elif candidate is iterable and candidate is not string %}
+              {% set items = candidate | list %}
+            {% else %}
+              {% set items = [candidate] %}
+            {% endif %}
+            {% set ns = namespace(result=[]) %}
+            {% for item in items %}
+              {% if item is mapping and 'entity_id' in item %}
+                {% set inner = item.entity_id %}
+                {% if inner is iterable and inner is not string %}
+                  {% for entity in inner %}
+                    {% if entity is not none %}
+                      {% set _ = ns.result.append(entity | string) %}
+                    {% endif %}
+                  {% endfor %}
+                {% elif inner is not none %}
+                  {% set _ = ns.result.append(inner | string) %}
+                {% endif %}
+              {% elif item is iterable and item is not string %}
+                {% for entity in item %}
+                  {% if entity is not none %}
+                    {% set _ = ns.result.append(entity | string) %}
+                  {% endif %}
+                {% endfor %}
+              {% elif item is not none %}
+                {% set _ = ns.result.append(item | string) %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.result | to_json }}
+      - condition: template
+        value_template: "{{ (players_json | from_json) | length > 0 }}"
       - service: sonos.snapshot
-        target: { entity_id: "{{ players }}" }
-        data: { with_group: true }
+        target:
+          entity_id: "{{ players_json | from_json }}"
+        data:
+          with_group: true
       - repeat:
-          for_each: "{{ players }}"
+          for_each: "{{ players_json | from_json }}"
           sequence:
             - service: media_player.volume_set
-              target: { entity_id: "{{ repeat.item }}" }
-              data: { volume_level: "{{ chime_vol }}" }
+              target:
+                entity_id: "{{ repeat.item }}"
+              data:
+                volume_level: "{{ chime_vol | float }}"
       - repeat:
-          for_each: "{{ players }}"
+          for_each: "{{ players_json | from_json }}"
           sequence:
             - service: media_player.play_media
-              target: { entity_id: "{{ repeat.item }}" }
+              target:
+                entity_id: "{{ repeat.item }}"
               data:
                 media_content_id: "{{ chime_url }}"
                 media_content_type: music
             - delay: "00:00:00.20"
       - delay: "{{ chime_len }}"
       - service: sonos.restore
-        target: { entity_id: "{{ players }}" }
-        data: { with_group: true }
+        target:
+          entity_id: "{{ players_json | from_json }}"
+        data:
+          with_group: true
 
 automation:
   - alias: Ring → Ding-Dong + Shelves Flash
@@ -58,7 +104,32 @@ automation:
         entity_id: event.front_door_ding   # state changes to a new timestamp each press
     condition:
       - condition: template
-        value_template: "{{ trigger.to_state.attributes.get('event_type') == 'ding' }}"
+        value_template: >-
+          {% set attrs = trigger.to_state.attributes %}
+          {% set event_type = attrs.get('event_type') %}
+          {% set raw_data = attrs.get('event_data') %}
+          {% if raw_data is string %}
+            {% set parsed = raw_data | from_json %}
+            {% if parsed is mapping %}
+              {% set data = parsed %}
+            {% else %}
+              {% set data = {} %}
+            {% endif %}
+          {% elif raw_data is mapping %}
+            {% set data = raw_data %}
+          {% else %}
+            {% set data = {} %}
+          {% endif %}
+          {% set kind = data.get('kind') %}
+          {% set state = data.get('state') %}
+          {% set motion = data.get('motion') %}
+          {% set button_state = data.get('doorbellStatus') %}
+          {% set valid_states = ['ringing', 'starting', 'doorbell', 'button', 'on_demand'] %}
+          {% set motion_clear = motion in [none, false, 'false', 'False'] %}
+          {{ event_type == 'ding'
+             and (kind is none or kind in ['ding', 'doorbell', 'on_demand_ding', 'remote_ding'])
+             and (state is none or state in valid_states or button_state in ['ringing', 'pressed', 'start'])
+             and motion_clear }}
     action:
       - service: script.shelves_doorbell_flash
       - delay: "00:00:00.15"     # tiny stagger so Shellys start before audio
