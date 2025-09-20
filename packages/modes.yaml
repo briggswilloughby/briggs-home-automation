@@ -5,8 +5,7 @@
 #   - shelly_shelves.yaml scripts (shelf_set_mode_*, seahawks_touchdown, shelves_*)
 #   - sonos.yaml scripts (sonos_group_with, sonos_announce, etc.)
 # NOTES:
-#   - Clamp calls removed from mode_tv / mode_chill per request.
-#   - Night clamp automation is present but disabled.
+#   - Coordinates shelves and Sonos behavior without additional volume guards.
 # =============================================================================
 
 script:
@@ -30,7 +29,7 @@ script:
     mode: restart
     sequence:
       - service: script.shelf_set_mode_chill
-      # (No clamping)
+      # Add any extra Sonos actions here if desired.
 
   mode_party:
     alias: "Mode - Party"
@@ -70,28 +69,3 @@ script:
       #     message: "Someone is at the front door."
       #     volume: 0.25
 
-automation:
-  - alias: Sonos - Night Clamp at 10:30 PM
-    initial_state: false
-    trigger:
-      - platform: time
-        at: "22:30:00"
-    action:
-      - service: script.sonos_clamp_volume
-        data:
-          player: media_player.family_room
-          max_level: 0.18
-      - service: script.sonos_clamp_volume
-        data:
-          player: media_player.kitchen
-          max_level: 0.18
-
-  - alias: Sonos - Morning Unclamp at 7:00 AM
-    trigger:
-      - platform: time
-        at: "07:00:00"
-    action:
-      - service: script.sonos_raise_if_below
-        data: { player: media_player.family_room, min_level: 0.25 }
-      - service: script.sonos_raise_if_below
-        data: { player: media_player.kitchen,     min_level: 0.25 }
