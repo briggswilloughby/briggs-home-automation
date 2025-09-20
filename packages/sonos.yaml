@@ -65,8 +65,7 @@ script:
       - condition: template
         value_template: "{{ player_list | length > 0 }}"
       - repeat:
-          for_each:
-            template: "{{ player_list }}"
+          for_each: "{{ player_list }}"
           sequence:
             - service: sonos.snapshot
               target:
@@ -121,8 +120,7 @@ script:
       - condition: template
         value_template: "{{ player_list | length > 0 }}"
       - repeat:
-          for_each:
-            template: "{{ player_list }}"
+          for_each: "{{ player_list }}"
           sequence:
             - service: sonos.restore
               target:
@@ -405,7 +403,7 @@ script:
           - conditions: "{{ volume is defined }}"
             sequence:
               - repeat:
-                  for_each: players_list
+                  for_each: "{{ players_list }}"
                   sequence:
                     - service: media_player.volume_set
                       target:
