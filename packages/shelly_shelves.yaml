@@ -333,8 +333,10 @@ script:
         description: "transition seconds (float)"
     sequence:
       - variables:
-          grp: "{{ group | default('light.shelves_all') }}"
-          targets: "{{ expand(grp) | map(attribute='entity_id') | list }}"
+          grp: "{{ group | default('light.shelves_all', true) }}"
+          expanded: "{{ expand(grp) | map(attribute='entity_id') | list }}"
+          targets: "{{ (expanded if expanded else (grp if grp is iterable and grp is not string else [grp]))
+                       | reject('equalto', none) | map('string') | list }}"
           r: "{{ rgbw[0] | int }}"
           g: "{{ rgbw[1] | int }}"
           b: "{{ rgbw[2] | int }}"
@@ -345,8 +347,8 @@ script:
           for_each: "{{ targets }}"
           sequence:
             - service: light.turn_on
-              target: { entity_id: "{{ repeat.item }}" }
               data:
+                entity_id: "{{ repeat.item }}"
                 rgbw_color: [ "{{ r }}", "{{ g }}", "{{ b }}", "{{ w }}" ]
                 brightness_pct: "{{ bp }}"
                 transition: "{{ tr }}"
