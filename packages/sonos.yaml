@@ -397,7 +397,8 @@ script:
         value_template: "{{ players_list | length > 0 }}"
       - service: script.sonos_snapshot
         data:
-          players: players_list
+          players:
+            template: "{{ players_list }}"
       - choose:
           - conditions: "{{ volume is defined }}"
             sequence:
@@ -417,7 +418,8 @@ script:
       - delay: "00:00:04"
       - service: script.sonos_restore_snapshot
         data:
-          players: players_list
+          players:
+            template: "{{ players_list }}"
 
   # ---------- GROUP PRESETS / TRANSFERS ----------
   tv_plus_kitchen:
