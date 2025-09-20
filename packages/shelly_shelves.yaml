@@ -370,7 +370,7 @@ script:
                 {% set _ = ns.result.append(item | string) %}
               {% endif %}
             {% endfor %}
-            {{ ns.result | to_json }}
+            {{ ns.result }}
           r: "{{ rgbw[0] | int }}"
           g: "{{ rgbw[1] | int }}"
           b: "{{ rgbw[2] | int }}"
@@ -378,13 +378,12 @@ script:
           bp: "{{ bright | int }}"
           tr: "{{ trans | float(0) }}"
       - repeat:
-          for_each: "{{ targets_json | from_json }}"
+          for_each: "{{ targets_json }}"
           sequence:
             - service: light.turn_on
               target:
                 entity_id: "{{ repeat.item }}"
               data:
-                entity_id: "{{ repeat.item }}"
                 rgbw_color: [ "{{ r }}", "{{ g }}", "{{ b }}", "{{ w }}" ]
                 brightness_pct: "{{ bp }}"
                 transition: "{{ tr }}"
