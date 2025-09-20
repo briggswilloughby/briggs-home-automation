@@ -373,6 +373,7 @@ script:
               target:
                 entity_id: "{{ repeat.item }}"
               data:
+                entity_id: "{{ repeat.item }}"
                 rgbw_color: [ "{{ r }}", "{{ g }}", "{{ b }}", "{{ w }}" ]
                 brightness_pct: "{{ bp }}"
                 transition: "{{ tr }}"

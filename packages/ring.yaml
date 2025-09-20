@@ -59,6 +59,7 @@ script:
         target:
           entity_id: "{{ plist }}"
         data:
+
           with_group: true
       - repeat:
           for_each: "{{ plist }}"
@@ -68,6 +69,7 @@ script:
                 entity_id: "{{ repeat.item }}"
               data:
                 volume_level: "{{ chime_vol | float }}"
+
       - repeat:
           for_each: "{{ plist }}"
           sequence:
@@ -75,6 +77,7 @@ script:
               target:
                 entity_id: "{{ repeat.item }}"
               data:
+                entity_id: "{{ repeat.item }}"
                 media_content_id: "{{ chime_url }}"
                 media_content_type: music
             - delay: "00:00:00.20"
