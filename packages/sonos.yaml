@@ -407,8 +407,7 @@ script:
                   sequence:
                     - service: media_player.volume_set
                       target:
-                        entity_id:
-                          template: "{{ repeat.item }}"
+                        entity_id: "{{ repeat.item }}"
                       data:
                         volume_level: "{{ volume | float }}"
       - service: "{{ tts }}"
