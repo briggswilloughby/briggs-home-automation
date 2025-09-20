@@ -65,7 +65,7 @@ script:
       - condition: template
         value_template: "{{ player_list | length > 0 }}"
       - repeat:
-          for_each: player_list
+          for_each: "{{ player_list }}"
           sequence:
             - service: sonos.snapshot
               target:
@@ -120,7 +120,7 @@ script:
       - condition: template
         value_template: "{{ player_list | length > 0 }}"
       - repeat:
-          for_each: player_list
+          for_each: "{{ player_list }}"
           sequence:
             - service: sonos.restore
               target:
@@ -401,11 +401,14 @@ script:
       - choose:
           - conditions: "{{ volume is defined }}"
             sequence:
-              - service: media_player.volume_set
-                target:
-                  entity_id: players_list
-                data:
-                  volume_level: "{{ volume | float }}"
+              - repeat:
+                  for_each: "{{ players_list }}"
+                  sequence:
+                    - service: media_player.volume_set
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        volume_level: "{{ volume | float }}"
       - service: "{{ tts }}"
         target:
           entity_id: "{{ players_list[0] }}"
@@ -467,7 +470,21 @@ script:
       - choose:
           - conditions: "{{ state_attr('media_player.family_room', 'source') == 'TV' }}"
             sequence:
-              - service: script.tv_plus_kitchen
+              - choose:
+                  - conditions: "{{ states('script.tv_plus_kitchen') != 'unknown' }}"
+                    sequence:
+                      - service: script.turn_on
+                        target:
+                          entity_id: script.tv_plus_kitchen
+                default:
+                  - service: script.sonos_group_with
+                    data:
+                      coordinator: media_player.family_room
+                      members:
+                        - media_player.kitchen
+                  - service: media_player.volume_set
+                    target: { entity_id: media_player.kitchen }
+                    data: { volume_level: 0.10 }
         default:
           - service: script.sonos_move
             data: { source: media_player.family_room, dest: media_player.kitchen }
