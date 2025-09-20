@@ -333,8 +333,33 @@ script:
         description: "transition seconds (float)"
     sequence:
       - variables:
-          grp: "{{ group | default('light.shelves_all') }}"
-          targets: "{{ expand(grp) | map(attribute='entity_id') | list }}"
+          grp: "{{ group | default('light.shelves_all', true) }}"
+          expanded: "{{ expand(grp) | map(attribute='entity_id') | list }}"
+          targets_source: >-
+            {% set base = expanded if expanded else grp %}
+            {% if base is mapping and 'entity_id' in base %}
+              {% set base = base.entity_id %}
+            {% endif %}
+            {% if base is iterable and base is not string %}
+              {% set items = base | list %}
+            {% elif base is none %}
+              {% set items = [] %}
+            {% else %}
+              {% set items = [base] %}
+            {% endif %}
+            {% set ns = namespace(result=[]) %}
+            {% for item in items %}
+              {% if item is mapping and 'entity_id' in item %}
+                {% set value = item.entity_id %}
+              {% else %}
+                {% set value = item %}
+              {% endif %}
+              {% if value is not none %}
+                {% set _ = ns.result.append(value | string) %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.result | to_json }}
+          targets: "{{ targets_source | from_json }}"
           r: "{{ rgbw[0] | int }}"
           g: "{{ rgbw[1] | int }}"
           b: "{{ rgbw[2] | int }}"
@@ -345,7 +370,8 @@ script:
           for_each: "{{ targets }}"
           sequence:
             - service: light.turn_on
-              target: { entity_id: "{{ repeat.item }}" }
+              target:
+                entity_id: "{{ repeat.item }}"
               data:
                 rgbw_color: [ "{{ r }}", "{{ g }}", "{{ b }}", "{{ w }}" ]
                 brightness_pct: "{{ bp }}"

@@ -26,34 +26,39 @@ script:
         description: One or more media_player.*
     sequence:
       - variables:
-          plist: >-
-            {% set candidate = players %}
+          plist_source: >-
+            {% set candidate = players | default([], true) %}
             {% if candidate is mapping and 'entity_id' in candidate %}
               {% set candidate = candidate.entity_id %}
             {% endif %}
             {% if candidate is iterable and candidate is not string %}
-              {{ candidate | list }}
+              {% set items = candidate | list %}
+            {% elif candidate is none %}
+              {% set items = [] %}
             {% else %}
-              {% set matches = (candidate | string) | regex_findall('media_player\\.[\w_]+') %}
-              {{ matches if matches else ([candidate] if candidate is not none else []) }}
+              {% set items = [candidate] %}
             {% endif %}
+            {% set ns = namespace(result=[]) %}
+            {% for item in items %}
+              {% if item is mapping and 'entity_id' in item %}
+                {% set value = item.entity_id %}
+              {% else %}
+                {% set value = item %}
+              {% endif %}
+              {% if value is not none %}
+                {% set _ = ns.result.append(value | string) %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.result | to_json }}
+      - variables:
+          plist: "{{ plist_source | from_json }}"
       - repeat:
-          for_each: "{{ plist | list }}"
+          for_each: "{{ plist }}"
           sequence:
-            - variables:
-                player_id: >-
-                  {% set item = repeat.item %}
-                  {% if item is mapping and 'entity_id' in item %}
-                    {{ item.entity_id }}
-                  {% elif item is string %}
-                    {% set match = item | regex_search('media_player\\.[\w_]+') %}
-                    {{ match if match else item }}
-                  {% else %}
-                    {{ item | string }}
-                  {% endif %}
             - service: sonos.snapshot
+              target:
+                entity_id: "{{ repeat.item }}"
               data:
-                entity_id: "{{ player_id }}"
                 with_group: true
 
   sonos_restore_snapshot:
@@ -64,34 +69,39 @@ script:
         description: One or more media_player.*
     sequence:
       - variables:
-          plist: >-
-            {% set candidate = players %}
+          plist_source: >-
+            {% set candidate = players | default([], true) %}
             {% if candidate is mapping and 'entity_id' in candidate %}
               {% set candidate = candidate.entity_id %}
             {% endif %}
             {% if candidate is iterable and candidate is not string %}
-              {{ candidate | list }}
+              {% set items = candidate | list %}
+            {% elif candidate is none %}
+              {% set items = [] %}
             {% else %}
-              {% set matches = (candidate | string) | regex_findall('media_player\\.[\w_]+') %}
-              {{ matches if matches else ([candidate] if candidate is not none else []) }}
+              {% set items = [candidate] %}
             {% endif %}
+            {% set ns = namespace(result=[]) %}
+            {% for item in items %}
+              {% if item is mapping and 'entity_id' in item %}
+                {% set value = item.entity_id %}
+              {% else %}
+                {% set value = item %}
+              {% endif %}
+              {% if value is not none %}
+                {% set _ = ns.result.append(value | string) %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.result | to_json }}
+      - variables:
+          plist: "{{ plist_source | from_json }}"
       - repeat:
-          for_each: "{{ plist | list }}"
+          for_each: "{{ plist }}"
           sequence:
-            - variables:
-                player_id: >-
-                  {% set item = repeat.item %}
-                  {% if item is mapping and 'entity_id' in item %}
-                    {{ item.entity_id }}
-                  {% elif item is string %}
-                    {% set match = item | regex_search('media_player\\.[\w_]+') %}
-                    {{ match if match else item }}
-                  {% else %}
-                    {{ item | string }}
-                  {% endif %}
             - service: sonos.restore
+              target:
+                entity_id: "{{ repeat.item }}"
               data:
-                entity_id: "{{ player_id }}"
                 with_group: true
 
   sonos_play:
@@ -149,6 +159,27 @@ script:
         target: { entity_id: "{{ player }}" }
         data: { volume_level: "{{ newv }}" }
 
+  sonos_raise_if_below:
+    alias: "Sonos - Raise If Below"
+    mode: parallel
+    fields:
+      player:
+        description: media_player.* to guard
+      min_level:
+        description: Minimum volume (0.0..1.0)
+    sequence:
+      - variables:
+          target_player: "{{ player }}"
+          minimum: "{{ min_level | float(0) }}"
+          current: "{{ state_attr(target_player, 'volume_level') | float(0) }}"
+      - condition: template
+        value_template: "{{ target_player is not none and current < minimum }}"
+      - service: media_player.volume_set
+        target:
+          entity_id: "{{ target_player }}"
+        data:
+          volume_level: "{{ minimum }}"
+
   sonos_move:
     alias: "Sonos - Move Playback"
     mode: restart
@@ -195,18 +226,46 @@ script:
         description: List of media_player.* to add
     sequence:
       - variables:
-          add_list: >
-            {{ members if members is iterable and members is not string else [members] }}
-      - service: media_player.join
-        target: { entity_id: "{{ coordinator }}" }   # coordinator/master
-        data:
-          group_members: "{{ add_list }}"            # members to add
-      - wait_template: >
-          {{ state_attr(coordinator, 'group_members') is defined
-             and (add_list | select('in', state_attr(coordinator, 'group_members')) | list | length)
-                 == (add_list | length) }}
-        timeout: "00:00:03"
-        continue_on_timeout: true
+          add_source: >-
+            {% set raw = members | default([], true) %}
+            {% if raw is mapping and 'entity_id' in raw %}
+              {% set raw = raw.entity_id %}
+            {% endif %}
+            {% if raw is iterable and raw is not string %}
+              {% set items = raw | list %}
+            {% elif raw is none %}
+              {% set items = [] %}
+            {% else %}
+              {% set items = [raw] %}
+            {% endif %}
+            {% set ns = namespace(result=[]) %}
+            {% for item in items %}
+              {% if item is mapping and 'entity_id' in item %}
+                {% set value = item.entity_id %}
+              {% else %}
+                {% set value = item %}
+              {% endif %}
+              {% if value is not none %}
+                {% set _ = ns.result.append(value | string) %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.result | to_json }}
+      - variables:
+          add_list: "{{ add_source | from_json }}"
+      - choose:
+          - conditions: "{{ add_list | length > 0 }}"
+            sequence:
+              - service: media_player.join
+                target:
+                  entity_id: "{{ coordinator }}"            # coordinator/master
+                data:
+                  group_members: "{{ add_list }}"            # members to add
+              - wait_template: >
+                  {{ state_attr(coordinator, 'group_members') is defined
+                     and (add_list | select('in', state_attr(coordinator, 'group_members')) | list | length)
+                         == (add_list | length) }}
+                timeout: "00:00:03"
+                continue_on_timeout: true
 
   sonos_ungroup_all:
     alias: "Sonos - Ungroup All"
@@ -220,26 +279,6 @@ script:
             - media_player.bar
             - media_player.patio
             - media_player.roam2
-
-  sonos_clamp_volume:
-    alias: "Sonos - Clamp Volume"
-    mode: parallel
-    fields:
-      player:
-        example: media_player.family_room
-      max_level:
-        example: 0.20
-    sequence:
-      - variables:
-          cur: "{{ state_attr(player, 'volume_level') | float(0) }}"
-          maxv: "{{ max_level | float(0.2) }}"
-          newv: "{{ [cur, maxv] | min }}"
-      - choose:
-          - conditions: "{{ newv < cur }}"
-            sequence:
-              - service: media_player.volume_set
-                target: { entity_id: "{{ player }}" }
-                data: { volume_level: "{{ newv }}" }
 
   sonos_mute_all:
     alias: "Sonos - Mute All"
@@ -283,24 +322,54 @@ script:
         description: TTS service (default tts.google_translate_say)
     sequence:
       - variables:
-          plist: >
-            {{ players if players is iterable and players is not string else [players] }}
+          plist_source: >-
+            {% set candidate = players | default([], true) %}
+            {% if candidate is mapping and 'entity_id' in candidate %}
+              {% set candidate = candidate.entity_id %}
+            {% endif %}
+            {% if candidate is iterable and candidate is not string %}
+              {% set items = candidate | list %}
+            {% elif candidate is none %}
+              {% set items = [] %}
+            {% else %}
+              {% set items = [candidate] %}
+            {% endif %}
+            {% set ns = namespace(result=[]) %}
+            {% for item in items %}
+              {% if item is mapping and 'entity_id' in item %}
+                {% set value = item.entity_id %}
+              {% else %}
+                {% set value = item %}
+              {% endif %}
+              {% if value is not none %}
+                {% set _ = ns.result.append(value | string) %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.result | to_json }}
+          plist: "{{ plist_source | from_json }}"
           tts: "{{ tts_service if tts_service is defined else 'tts.google_translate_say' }}"
+      - condition: template
+        value_template: "{{ plist | length > 0 }}"
       - service: script.sonos_snapshot
-        data: { players: "{{ plist }}" }
+        data:
+          players: "{{ plist }}"
       - choose:
           - conditions: "{{ volume is defined }}"
             sequence:
               - service: media_player.volume_set
-                target: { entity_id: "{{ plist }}" }
-                data: { volume_level: "{{ volume|float }}" }
+                target:
+                  entity_id: "{{ plist }}"
+                data:
+                  volume_level: "{{ volume | float }}"
       - service: "{{ tts }}"
-        data:
+        target:
           entity_id: "{{ plist[0] }}"
+        data:
           message: "{{ message }}"
       - delay: "00:00:04"
       - service: script.sonos_restore_snapshot
-        data: { players: "{{ plist }}" }
+        data:
+          players: "{{ plist }}"
 
   # ---------- GROUP PRESETS / TRANSFERS ----------
   tv_plus_kitchen:
