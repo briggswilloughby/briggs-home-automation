@@ -127,6 +127,7 @@ script:
                 {% if pool is iterable and pool is not string %}
                   {% for nested in pool %}
                     {% if nested is not none %}
+                      {% set name = nested | string %}
                       {% if name.startswith('media_player.') and name not in ns.result %}
                         {% set ns.result = ns.result + [name] %}
                       {% endif %}
@@ -157,9 +158,14 @@ script:
             {{ ns.result | list }}
       - condition: template
         value_template: "{{ volume_targets | length > 0 }}"
-      - service: script.sonos_snapshot
-        data:
-          players: "{{ coordinator_list }}"
+      - repeat:
+          for_each: "{{ coordinator_list }}"
+          sequence:
+            - service: sonos.snapshot
+              target:
+                entity_id: "{{ repeat.item }}"
+              data:
+                with_group: true
       - repeat:
           for_each: "{{ volume_targets }}"
           sequence:
@@ -177,12 +183,16 @@ script:
               data:
                 media_content_id: "{{ chime_url }}"
                 media_content_type: music
-                announce: true
-            - delay: "00:00:00.20"
+            - delay: { milliseconds: 200 }
       - delay: "{{ chime_len }}"
-      - service: script.sonos_restore_snapshot
-        data:
-          players: "{{ coordinator_list }}"
+      - repeat:
+          for_each: "{{ coordinator_list }}"
+          sequence:
+            - service: sonos.restore
+              target:
+                entity_id: "{{ repeat.item }}"
+              data:
+                with_group: true
 
 automation:
   - alias: Ring → Ding-Dong + Shelves Flash

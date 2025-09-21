@@ -1,5 +1,6 @@
 # /config/packages/shelly_shelves.yaml
 # Shelly Shelves: groups, modes, brightness step, robust flashers (scene-based restore)
+# FIX: Mode and wrapper scripts call helpers directly so the sandbox stays happy.
 # LEARNING: Replace templated service names with explicit choose blocks to satisfy the script sandbox.
 
 #####################
@@ -274,10 +275,8 @@ script:
             - light.shelf_3
             - light.shelf_4
           sequence:
-            - service: light.turn_on
+            - service: homeassistant.update_entity
               target: { entity_id: "{{ repeat.item }}" }
-              data:
-                transition: 0
 
   # ---- Doorbell Flash (scene snapshot → red x3 → restore) ----
   shelves_doorbell_flash:
@@ -326,10 +325,8 @@ script:
             - light.shelf_3
             - light.shelf_4
           sequence:
-            - service: light.turn_on
+            - service: homeassistant.update_entity
               target: { entity_id: "{{ repeat.item }}" }
-              data:
-                transition: 0
 
   # ---- (Optional) Shelf 2 – Probe Restore (single-light test) ----
   shelf2_probe_restore:
