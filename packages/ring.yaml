@@ -1,6 +1,7 @@
 # =============================================================================
 # PACKAGE: ring.yaml
 # PURPOSE: Ring ding → flash Shelly shelves + play chime on Kitchen & Patio Sonos
+# FIX: Launch Sonos chime asynchronously before Shelly flash for quicker audio start.
 #
 # DEPENDS ON:
 #   - Shelly shelves package providing script.shelves_doorbell_flash
@@ -22,7 +23,7 @@ script:
       players:
         - media_player.kitchen
         - media_player.patio
-      chime_url: "media-source://media_source/local/dingdong.mp3"  # /config/www/dingdong.mp3
+      chime_url: "http://192.168.68.86:8123/local/dingdong.mp3"  # /config/www/dingdong.mp3
       chime_vol: 0.40
       chime_len: "00:00:03"
     sequence:
@@ -133,7 +134,11 @@ automation:
              and motion_clear }}
 
     action:
-      - service: script.shelves_doorbell_flash
-      - delay: "00:00:00.15"     # tiny stagger so Shellys start before audio
-      - service: script.sonos_doorbell_chime
+      - service: script.turn_on
+        target:
+          entity_id: script.sonos_doorbell_chime
+      - delay: "00:00:00.10"     # tiny stagger so shelves trail the audio start
+      - service: script.turn_on
+        target:
+          entity_id: script.shelves_doorbell_flash
       - delay: "00:00:04"        # absorb duplicates
