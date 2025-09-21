@@ -1,7 +1,7 @@
 # =============================================================================
 # PACKAGE: ring.yaml
 # PURPOSE: Ring ding → flash Shelly shelves + play chime on Kitchen & Patio Sonos
-# FIX: Snapshot coordinators, bump volumes, play the clip, then restore for a reliable chime.
+# FIX: Snapshot kitchen/patio, raise their volumes, play the clip, then restore for a reliable chime.
 #
 # DEPENDS ON:
 #   - Shelly shelves package providing script.shelves_doorbell_flash
@@ -20,179 +20,46 @@ script:
     alias: Sonos - Doorbell Chime (Kitchen + Patio)
     mode: single
     variables:
-      players:
-        - media_player.kitchen
-        - media_player.patio
       chime_url: "media-source://media_source/local/dingdong.mp3"  # /config/www/dingdong.mp3
       chime_vol: 0.40
       chime_len: "00:00:03"
     sequence:
-      - variables:
-          player_list: |-
-            {% set candidate = players | default([], true) %}
-            {% if candidate is mapping and 'entity_id' in candidate %}
-              {% set candidate = candidate.entity_id %}
-            {% endif %}
-            {% if candidate is none %}
-              {% set items = [] %}
-            {% elif candidate is iterable and candidate is not string %}
-              {% set items = candidate | list %}
-            {% else %}
-              {% set items = [candidate] %}
-            {% endif %}
-            {% set ns = namespace(result=[]) %}
-            {% for item in items %}
-              {% if item is mapping and 'entity_id' in item %}
-                {% set inner = item.entity_id %}
-                {% if inner is iterable and inner is not string %}
-                  {% for entity in inner %}
-                    {% if entity is not none %}
-                      {% set ns.result = ns.result + [entity | string] %}
-                    {% endif %}
-                  {% endfor %}
-                {% elif inner is not none %}
-                  {% set ns.result = ns.result + [inner | string] %}
-                {% endif %}
-              {% elif item is iterable and item is not string %}
-                {% for entity in item %}
-                  {% if entity is not none %}
-                    {% set ns.result = ns.result + [entity | string] %}
-                  {% endif %}
-                {% endfor %}
-              {% elif item is not none %}
-                {% set ns.result = ns.result + [item | string] %}
-              {% endif %}
-            {% endfor %}
-            {{ ns.result | list }}
-      - variables:
-          coordinator_list: |-
-            {% set items = player_list | default([], true) %}
-            {% if items is none %}
-              {% set items = [] %}
-            {% elif items is string %}
-              {% set items = [items] %}
-            {% endif %}
-            {% set ns = namespace(result=[]) %}
-            {% for raw in items %}
-              {% set entity = raw %}
-              {% if entity is mapping and 'entity_id' in entity %}
-                {% set entity = entity.entity_id %}
-              {% endif %}
-              {% if entity is iterable and entity is not string %}
-                {% set entity_list = entity | list %}
-              {% else %}
-                {% set entity_list = [entity] %}
-              {% endif %}
-              {% for candidate in entity_list %}
-                {% if candidate is not none %}
-                  {% set name = candidate | string %}
-                  {% set chosen = name %}
-                  {% set coordinator = state_attr(name, 'coordinator') %}
-                  {% if coordinator is string and coordinator | length > 0 and coordinator.startswith('media_player.') %}
-                    {% set chosen = coordinator %}
-                  {% else %}
-                    {% set group = state_attr(name, 'sonos_group') %}
-                    {% if group is iterable and group is not string and group | length > 0 %}
-                      {% set first = group[0] %}
-                      {% if first is string and first.startswith('media_player.') %}
-                        {% set chosen = first %}
-                      {% endif %}
-                    {% endif %}
-                  {% endif %}
-                  {% if chosen not in ns.result %}
-                    {% set ns.result = ns.result + [chosen] %}
-                  {% endif %}
-                {% endif %}
-              {% endfor %}
-            {% endfor %}
-            {{ ns.result | list }}
-      - variables:
-          volume_targets: |-
-            {% set base = player_list | default([], true) %}
-            {% if base is none %}
-              {% set base = [] %}
-            {% elif base is string %}
-              {% set base = [base] %}
-            {% endif %}
-            {% set extras = coordinator_list | default([], true) %}
-            {% if extras is none %}
-              {% set extras = [] %}
-            {% elif extras is string %}
-              {% set extras = [extras] %}
-            {% endif %}
-            {% set ns = namespace(result=[]) %}
-            {% for entity in base + extras %}
-              {% if entity is mapping and 'entity_id' in entity %}
-                {% set pool = entity.entity_id %}
-                {% if pool is iterable and pool is not string %}
-                  {% for nested in pool %}
-                    {% if nested is not none %}
-                      {% set name = nested | string %}
-                      {% if name.startswith('media_player.') and name not in ns.result %}
-                        {% set ns.result = ns.result + [name] %}
-                      {% endif %}
-                    {% endif %}
-                  {% endfor %}
-                {% elif pool is not none %}
-                  {% set name = pool | string %}
-                  {% if name.startswith('media_player.') and name not in ns.result %}
-                    {% set ns.result = ns.result + [name] %}
-                  {% endif %}
-                {% endif %}
-              {% elif entity is iterable and entity is not string %}
-                {% for nested in entity %}
-                  {% if nested is not none %}
-                    {% set name = nested | string %}
-                    {% if name.startswith('media_player.') and name not in ns.result %}
-                      {% set ns.result = ns.result + [name] %}
-                    {% endif %}
-                  {% endif %}
-                {% endfor %}
-              {% elif entity is not none %}
-                {% set name = entity | string %}
-                {% if name.startswith('media_player.') and name not in ns.result %}
-                  {% set ns.result = ns.result + [name] %}
-                {% endif %}
-              {% endif %}
-            {% endfor %}
-            {{ ns.result | list }}
-      - condition: template
-        value_template: "{{ volume_targets | length > 0 }}"
-      - repeat:
-          for_each: "{{ coordinator_list }}"
-          sequence:
-            - service: sonos.snapshot
-              target:
-                entity_id: "{{ repeat.item }}"
-              data:
-                with_group: true
-      - repeat:
-          for_each: "{{ volume_targets }}"
-          sequence:
-            - service: media_player.volume_set
-              target:
-                entity_id: "{{ repeat.item }}"
-              data:
-                volume_level: "{{ chime_vol | float }}"
-      - repeat:
-          for_each: "{{ coordinator_list }}"
-          sequence:
-            - service: media_player.play_media
-              target:
-                entity_id: "{{ repeat.item }}"
-              data:
-                media_content_id: "{{ chime_url }}"
-                media_content_type: music
-            - delay: { milliseconds: 200 }
+      - service: sonos.snapshot
+        target:
+          entity_id:
+            - media_player.kitchen
+            - media_player.patio
+        data:
+          with_group: true
+      - service: media_player.volume_set
+        target:
+          entity_id:
+            - media_player.kitchen
+            - media_player.patio
+        data:
+          volume_level: "{{ chime_vol | float }}"
+      - service: media_player.play_media
+        target:
+          entity_id: media_player.kitchen
+        data:
+          media_content_id: "{{ chime_url }}"
+          media_content_type: music
+      - delay: "00:00:00.20"
+      - service: media_player.play_media
+        target:
+          entity_id: media_player.patio
+        data:
+          media_content_id: "{{ chime_url }}"
+          media_content_type: music
       - delay: "{{ chime_len }}"
-      - repeat:
-          for_each: "{{ coordinator_list }}"
-          sequence:
-            - service: sonos.restore
-              target:
-                entity_id: "{{ repeat.item }}"
-              data:
-                with_group: true
+      - service: sonos.restore
+        target:
+          entity_id:
+            - media_player.kitchen
+            - media_player.patio
+        data:
+          with_group: true
+
 
 automation:
   - alias: Ring → Ding-Dong + Shelves Flash
