@@ -127,7 +127,6 @@ script:
                 {% if pool is iterable and pool is not string %}
                   {% for nested in pool %}
                     {% if nested is not none %}
-                      {% set name = nested | string %}
                       {% if name.startswith('media_player.') and name not in ns.result %}
                         {% set ns.result = ns.result + [name] %}
                       {% endif %}
@@ -178,6 +177,7 @@ script:
               data:
                 media_content_id: "{{ chime_url }}"
                 media_content_type: music
+                announce: true
             - delay: "00:00:00.20"
       - delay: "{{ chime_len }}"
       - service: script.sonos_restore_snapshot

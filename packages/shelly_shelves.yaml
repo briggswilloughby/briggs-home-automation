@@ -1,6 +1,5 @@
 # /config/packages/shelly_shelves.yaml
 # Shelly Shelves: groups, modes, brightness step, robust flashers (scene-based restore)
-# FIX: Mode and wrapper scripts call helpers directly so the sandbox stays happy.
 # LEARNING: Replace templated service names with explicit choose blocks to satisfy the script sandbox.
 
 #####################
