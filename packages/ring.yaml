@@ -159,17 +159,17 @@ script:
         data:
           players: "{{ coordinator_list }}"
       - repeat:
-        for_each: "{{ volume_targets }}"
-        sequence:
-          - service: media_player.volume_set
+          for_each: "{{ volume_targets }}"
+          sequence:
+            - service: media_player.volume_set
               target:
                 entity_id: "{{ repeat.item }}"
               data:
                 volume_level: "{{ chime_vol | float }}"
       - repeat:
-        for_each: "{{ coordinator_list }}"
-        sequence:
-          - service: media_player.play_media
+          for_each: "{{ coordinator_list }}"
+          sequence:
+            - service: media_player.play_media
               target:
                 entity_id: "{{ repeat.item }}"
               data:
