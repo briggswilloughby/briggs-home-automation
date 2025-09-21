@@ -22,9 +22,7 @@ script:
     fields:
       players:
         description: Optional override of Sonos players to chime.
-        example:
-          - media_player.kitchen
-          - media_player.patio
+        example: media_player.kitchen
     variables:
       chime_url: "media-source://media_source/local/dingdong.mp3"  # /config/www/dingdong.mp3
       chime_vol: 0.40
