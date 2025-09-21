@@ -11,6 +11,7 @@
 #       script.shelves_next_mode / shelves_prev_mode
 # NOTES:
 #   - All steps use `service:` (canonical).
+# LEARNING: Call the shelves helpers directly instead of templated services to avoid sandbox denials.
 # =============================================================================
 
 script:
