@@ -27,7 +27,7 @@ script:
       chime_len: "00:00:03"
     sequence:
       - variables:
-          players: >-
+          player_list: |-
             {% set candidate = players | default([], true) %}
             {% if candidate is mapping and 'entity_id' in candidate %}
               {% set candidate = candidate.entity_id %}
@@ -62,16 +62,14 @@ script:
                 {% set ns.result = ns.result + [item | string] %}
               {% endif %}
             {% endfor %}
-            {{ ns.result }}
+            {{ ns.result | list }}
       - condition: template
-        value_template: "{{ players | length > 0 }}"
-      - service: sonos.snapshot
-        target:
-          entity_id: "{{ players }}"
+        value_template: "{{ player_list | length > 0 }}"
+      - service: script.sonos_snapshot
         data:
-          with_group: true
+          players: "{{ player_list }}"
       - repeat:
-          for_each: "{{ players }}"
+          for_each: "{{ player_list }}"
           sequence:
             - service: media_player.volume_set
               target:
@@ -79,22 +77,19 @@ script:
               data:
                 volume_level: "{{ chime_vol | float }}"
       - repeat:
-          for_each: "{{ players }}"
+          for_each: "{{ player_list }}"
           sequence:
             - service: media_player.play_media
               target:
                 entity_id: "{{ repeat.item }}"
               data:
-                entity_id: "{{ repeat.item }}"
                 media_content_id: "{{ chime_url }}"
                 media_content_type: music
             - delay: "00:00:00.20"
       - delay: "{{ chime_len }}"
-      - service: sonos.restore
-        target:
-          entity_id: "{{ players }}"
+      - service: script.sonos_restore_snapshot
         data:
-          with_group: true
+          players: "{{ player_list }}"
 
 automation:
   - alias: Ring → Ding-Dong + Shelves Flash
