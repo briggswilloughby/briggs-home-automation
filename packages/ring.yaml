@@ -1,7 +1,7 @@
 # =============================================================================
 # PACKAGE: ring.yaml
 # PURPOSE: Ring ding → flash Shelly shelves + play chime on Kitchen & Patio Sonos
-# FIX: Snapshot kitchen/patio, raise their volumes, play the clip, then restore for a reliable chime.
+# FIX: Snapshot kitchen/patio, bump volume, fire the clip via each coordinator with announce, then restore.
 #
 # DEPENDS ON:
 #   - Shelly shelves package providing script.shelves_doorbell_flash
@@ -19,47 +19,16 @@ script:
   sonos_doorbell_chime:
     alias: Sonos - Doorbell Chime (Kitchen + Patio)
     mode: single
+    fields:
+      players:
+        description: Optional override of Sonos players to chime.
+        example:
+          - media_player.kitchen
+          - media_player.patio
     variables:
       chime_url: "media-source://media_source/local/dingdong.mp3"  # /config/www/dingdong.mp3
       chime_vol: 0.40
       chime_len: "00:00:03"
-    sequence:
-      - service: sonos.snapshot
-        target:
-          entity_id:
-            - media_player.kitchen
-            - media_player.patio
-        data:
-          with_group: true
-      - service: media_player.volume_set
-        target:
-          entity_id:
-            - media_player.kitchen
-            - media_player.patio
-        data:
-          volume_level: "{{ chime_vol | float }}"
-      - service: media_player.play_media
-        target:
-          entity_id: media_player.kitchen
-        data:
-          media_content_id: "{{ chime_url }}"
-          media_content_type: music
-      - delay: "00:00:00.20"
-      - service: media_player.play_media
-        target:
-          entity_id: media_player.patio
-        data:
-          media_content_id: "{{ chime_url }}"
-          media_content_type: music
-      - delay: "{{ chime_len }}"
-      - service: sonos.restore
-        target:
-          entity_id:
-            - media_player.kitchen
-            - media_player.patio
-        data:
-          with_group: true
-
 
 automation:
   - alias: Ring → Ding-Dong + Shelves Flash
