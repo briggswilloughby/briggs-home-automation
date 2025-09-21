@@ -63,13 +63,104 @@ script:
               {% endif %}
             {% endfor %}
             {{ ns.result | list }}
+      - variables:
+          coordinator_list: |-
+            {% set items = player_list | default([], true) %}
+            {% if items is none %}
+              {% set items = [] %}
+            {% elif items is string %}
+              {% set items = [items] %}
+            {% endif %}
+            {% set ns = namespace(result=[]) %}
+            {% for raw in items %}
+              {% set entity = raw %}
+              {% if entity is mapping and 'entity_id' in entity %}
+                {% set entity = entity.entity_id %}
+              {% endif %}
+              {% if entity is iterable and entity is not string %}
+                {% for nested in entity %}
+                  {% set name = nested %}
+                  {% if name is not none %}
+                    {% set name = name | string %}
+                    {% set coordinator = state_attr(name, 'coordinator') %}
+                    {% if coordinator is string and coordinator | length > 0 %}
+                      {% set name = coordinator %}
+                    {% endif %}
+                    {% if name not in ns.result %}
+                      {% set ns.result = ns.result + [name] %}
+                    {% endif %}
+                  {% endif %}
+                {% endfor %}
+              {% elif entity is not none %}
+                {% set name = entity | string %}
+                {% set coordinator = state_attr(name, 'coordinator') %}
+                {% if coordinator is string and coordinator | length > 0 %}
+                  {% set name = coordinator %}
+                {% endif %}
+                {% if name not in ns.result %}
+                  {% set ns.result = ns.result + [name] %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.result | list }}
+      - variables:
+          volume_targets: |-
+            {% set base = player_list | default([], true) %}
+            {% if base is none %}
+              {% set base = [] %}
+            {% elif base is string %}
+              {% set base = [base] %}
+            {% endif %}
+            {% set extras = coordinator_list | default([], true) %}
+            {% if extras is none %}
+              {% set extras = [] %}
+            {% elif extras is string %}
+              {% set extras = [extras] %}
+            {% endif %}
+            {% set ns = namespace(result=[]) %}
+            {% for entity in base + extras %}
+              {% if entity is mapping and 'entity_id' in entity %}
+                {% set pool = entity.entity_id %}
+                {% if pool is iterable and pool is not string %}
+                  {% for nested in pool %}
+                    {% if nested is not none %}
+                      {% set name = nested | string %}
+                      {% if name not in ns.result %}
+                        {% set ns.result = ns.result + [name] %}
+                      {% endif %}
+                    {% endif %}
+                  {% endfor %}
+                {% elif pool is not none %}
+                  {% set name = pool | string %}
+                  {% if name not in ns.result %}
+                    {% set ns.result = ns.result + [name] %}
+                  {% endif %}
+                {% endif %}
+              {% elif entity is iterable and entity is not string %}
+                {% for nested in entity %}
+                  {% if nested is not none %}
+                    {% set name = nested | string %}
+                    {% if name not in ns.result %}
+                      {% set ns.result = ns.result + [name] %}
+                    {% endif %}
+                  {% endif %}
+                {% endfor %}
+              {% elif entity is not none %}
+                {% set name = entity | string %}
+                {% if name not in ns.result %}
+                  {% set ns.result = ns.result + [name] %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.result | list }}
       - condition: template
-        value_template: "{{ player_list | length > 0 }}"
+        value_template: "{{ volume_targets | length > 0 }}"
       - service: script.sonos_snapshot
         data:
-          players: "{{ player_list }}"
+          players: "{{ coordinator_list }}"
       - repeat:
-          for_each: "{{ player_list }}"
+          for_each: "{{ volume_targets }}"
+
           sequence:
             - service: media_player.volume_set
               target:
@@ -77,7 +168,7 @@ script:
               data:
                 volume_level: "{{ chime_vol | float }}"
       - repeat:
-          for_each: "{{ player_list }}"
+          for_each: "{{ coordinator_list }}"
           sequence:
             - service: media_player.play_media
               target:
@@ -85,11 +176,12 @@ script:
               data:
                 media_content_id: "{{ chime_url }}"
                 media_content_type: music
+                announce: true
             - delay: "00:00:00.20"
       - delay: "{{ chime_len }}"
       - service: script.sonos_restore_snapshot
         data:
-          players: "{{ player_list }}"
+          players: "{{ coordinator_list }}
 
 automation:
   - alias: Ring → Ding-Dong + Shelves Flash
