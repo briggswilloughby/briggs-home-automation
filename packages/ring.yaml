@@ -24,7 +24,8 @@ script:
         description: Optional override of Sonos players to chime.
         example: media_player.kitchen
     variables:
-      chime_url: "media-source://media_source/local/dingdong.mp3"  # /config/www/dingdong.mp3
+
+      chime_url: "http://homeassistant.local:8123/local/dingdong.mp3"  # /config/www/dingdong.mp3
       chime_vol: 0.40
       chime_len: "00:00:03"
       players_list: >-
