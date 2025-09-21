@@ -160,6 +160,7 @@ script:
           players: "{{ coordinator_list }}"
       - repeat:
           for_each: "{{ volume_targets }}"
+
           sequence:
             - service: media_player.volume_set
               target:
@@ -180,7 +181,7 @@ script:
       - delay: "{{ chime_len }}"
       - service: script.sonos_restore_snapshot
         data:
-          players: "{{ coordinator_list }}"
+          players: "{{ coordinator_list }}
 
 automation:
   - alias: Ring → Ding-Dong + Shelves Flash
