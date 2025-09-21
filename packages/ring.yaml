@@ -60,6 +60,7 @@ script:
         data:
           with_group: true
 
+
 automation:
   - alias: Ring → Ding-Dong + Shelves Flash
     mode: single
