@@ -375,51 +375,23 @@ script:
     sequence:
       - variables:
           grp: "{{ group | default('light.shelves_all', true) }}"
-          expanded: "{{ expand(grp) | map(attribute='entity_id') | list }}"
-          targets_json: >-
-            {% set base = expanded if expanded else grp %}
-            {% if base is mapping and 'entity_id' in base %}
-              {% set base = base.entity_id %}
-            {% endif %}
-            {% if base is none %}
-              {% set items = [] %}
-            {% elif base is iterable and base is not string %}
-              {% set items = base | list %}
-            {% else %}
-              {% set items = [base] %}
-            {% endif %}
-            {% set ns = namespace(result=[]) %}
-            {% for item in items %}
-              {% if item is mapping and 'entity_id' in item %}
-                {% set inner = item.entity_id %}
-                {% if inner is iterable and inner is not string %}
-                  {% for entity in inner %}
-                    {% if entity is not none %}
-                      {% set _ = ns.result.append(entity | string) %}
-                    {% endif %}
-                  {% endfor %}
-                {% elif inner is not none %}
-                  {% set _ = ns.result.append(inner | string) %}
-                {% endif %}
-              {% elif item is iterable and item is not string %}
-                {% for entity in item %}
-                  {% if entity is not none %}
-                    {% set _ = ns.result.append(entity | string) %}
-                  {% endif %}
-                {% endfor %}
-              {% elif item is not none %}
-                {% set _ = ns.result.append(item | string) %}
-              {% endif %}
-            {% endfor %}
-            {{ ns.result }}
-          r: "{{ rgbw[0] | int }}"
-          g: "{{ rgbw[1] | int }}"
-          b: "{{ rgbw[2] | int }}"
-          w: "{{ rgbw[3] | int }}"
-          bp: "{{ bright | int }}"
-          tr: "{{ trans | float(0) }}"
+          base: "{{ grp['entity_id'] if grp is mapping and 'entity_id' in grp else grp }}"
+          expanded: >-
+            {{ (expand(base) | map(attribute='entity_id') | list) if base is not none else [] }}
+          targets: >-
+            {{ expanded or (
+                base | list if base is iterable and base is not string
+                else ([base] if base is not none else [])
+            ) }}
+          palette: "{{ rgbw if rgbw is not none else [0, 0, 0, 0] }}"
+          r: "{{ palette[0] | int(default=0) }}"
+          g: "{{ palette[1] | int(default=0) }}"
+          b: "{{ palette[2] | int(default=0) }}"
+          w: "{{ palette[3] | int(default=0) }}"
+          bp: "{{ bright | int(default=0) }}"
+          tr: "{{ trans | float(default=0) }}"
       - repeat:
-          for_each: "{{ targets_json }}"
+          for_each: "{{ targets }}"
           sequence:
             - service: light.turn_on
               target:
