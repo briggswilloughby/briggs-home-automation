@@ -1,6 +1,7 @@
 # =============================================================================
 # PACKAGE: sonos.yaml
 # PURPOSE: Sonos helpers and presets (Family Room, Kitchen, Bar, Patio, Roam2)
+# FIX: Keep repeat.for_each loops templated as strings so validators accept per-player runs.
 # NOTES:
 #   - YAML uses `service:` for calls (UI label "Actions" is just naming).
 #   - Grouping now uses generic media_player.join/unjoin (current HA behavior).
