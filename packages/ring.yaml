@@ -62,7 +62,7 @@ script:
                 {% set _ = ns.result.append(item | string) %}
               {% endif %}
             {% endfor %}
-            {{ ns.result }}
+            {{ ns.result | list }}
       - condition: template
         value_template: "{{ players | length > 0 }}"
       - service: sonos.snapshot
@@ -114,12 +114,12 @@ automation:
             {% if parsed is mapping %}
               {% set data = parsed %}
             {% else %}
-              {% set data = {} %}
+              {% set data = dict() %}
             {% endif %}
           {% elif raw_data is mapping %}
             {% set data = raw_data %}
           {% else %}
-            {% set data = {} %}
+            {% set data = dict() %}
           {% endif %}
           {% set kind = data.get('kind') %}
           {% set state = data.get('state') %}
