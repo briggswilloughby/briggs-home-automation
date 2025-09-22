@@ -27,7 +27,7 @@ script:
       chime_len: "00:00:03"
     sequence:
       - variables:
-          players: >-
+          player_list: >-
             {% set candidate = players | default([], true) %}
             {% if candidate is mapping and 'entity_id' in candidate %}
               {% set candidate = candidate.entity_id %}
@@ -46,32 +46,32 @@ script:
                 {% if inner is iterable and inner is not string %}
                   {% for entity in inner %}
                     {% if entity is not none %}
-                      {% set _ = ns.result.append(entity | string) %}
+                      {% set ns.result = ns.result + [(entity | string)] %}
                     {% endif %}
                   {% endfor %}
                 {% elif inner is not none %}
-                  {% set _ = ns.result.append(inner | string) %}
+                  {% set ns.result = ns.result + [(inner | string)] %}
                 {% endif %}
               {% elif item is iterable and item is not string %}
                 {% for entity in item %}
                   {% if entity is not none %}
-                    {% set _ = ns.result.append(entity | string) %}
+                    {% set ns.result = ns.result + [(entity | string)] %}
                   {% endif %}
                 {% endfor %}
               {% elif item is not none %}
-                {% set _ = ns.result.append(item | string) %}
+                {% set ns.result = ns.result + [(item | string)] %}
               {% endif %}
             {% endfor %}
-            {{ ns.result }}
+            {{ ns.result | list }}
       - condition: template
-        value_template: "{{ players | length > 0 }}"
+        value_template: "{{ player_list | length > 0 }}"
       - service: sonos.snapshot
         target:
-          entity_id: "{{ players }}"
+          entity_id: "{{ player_list }}"
         data:
           with_group: true
       - repeat:
-          for_each: "{{ players }}"
+          for_each: "{{ player_list }}"
           sequence:
             - service: media_player.volume_set
               target:
@@ -79,7 +79,7 @@ script:
               data:
                 volume_level: "{{ chime_vol | float }}"
       - repeat:
-          for_each: "{{ players }}"
+          for_each: "{{ player_list }}"
           sequence:
             - service: media_player.play_media
               target:
@@ -92,7 +92,7 @@ script:
       - delay: "{{ chime_len }}"
       - service: sonos.restore
         target:
-          entity_id: "{{ players }}"
+          entity_id: "{{ player_list }}"
         data:
           with_group: true
 
@@ -137,3 +137,4 @@ automation:
       - delay: "00:00:00.15"     # tiny stagger so Shellys start before audio
       - service: script.sonos_doorbell_chime
       - delay: "00:00:04"        # absorb duplicates
+# Rollback note: Restored prior ring chime flow while investigating regressions.
