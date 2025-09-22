@@ -1,6 +1,7 @@
 # =============================================================================
 # PACKAGE: cubbies.yaml
 # PURPOSE: Provide "Cubbies ..." aliases/wrappers for shelves lights & modes
+# FIX: Wrapper scripts now proxy the shelves helpers directly so mode changes succeed.
 #
 # DEPENDS ON:
 #   - Group entities created in shelly_shelves.yaml:
@@ -11,6 +12,7 @@
 #       script.shelves_next_mode / shelves_prev_mode
 # NOTES:
 #   - All steps use `service:` (canonical).
+# LEARNING: Call the shelves helpers directly instead of templated services to avoid sandbox denials.
 # =============================================================================
 
 script:

@@ -1,11 +1,13 @@
 # =============================================================================
 # PACKAGE: sonos.yaml
 # PURPOSE: Sonos helpers and presets (Family Room, Kitchen, Bar, Patio, Roam2)
+# FIX: Keep repeat.for_each loops templated as strings so validators accept per-player runs.
 # NOTES:
 #   - YAML uses `service:` for calls (UI label "Actions" is just naming).
 #   - Grouping now uses generic media_player.join/unjoin (current HA behavior).
 #   - Snapshots/restores still use sonos.snapshot/sonos.restore with groups.
 #   - Move: promote DEST to coordinator, unjoin SOURCE, then join SOURCE→DEST.
+# LEARNING: Home Assistant validators expect repeat.for_each templates to render plain strings.
 # =============================================================================
 homeassistant:
   customize:
@@ -283,11 +285,15 @@ script:
       - choose:
           - conditions: "{{ members_list | length > 0 }}"
             sequence:
-              - service: media_player.join
-                target:
-                  entity_id: "{{ coordinator }}"            # coordinator/master
-                data:
-                  group_members: members_list            # members to add
+              - repeat:
+                  for_each: "{{ members_list }}"
+                  sequence:
+                    - service: media_player.join
+                      target:
+                        entity_id: "{{ coordinator }}"            # coordinator/master
+                      data:
+                        group_members:
+                          - "{{ repeat.item }}"            # member to add
               - wait_template: >
                   {{ state_attr(coordinator, 'group_members') is defined
                      and (members_list | select('in', state_attr(coordinator, 'group_members')) | list | length)
@@ -391,8 +397,7 @@ script:
         value_template: "{{ players_list | length > 0 }}"
       - service: script.sonos_snapshot
         data:
-          players:
-            template: "{{ players_list }}"
+          players: "{{ players_list }}"
       - choose:
           - conditions: "{{ volume is defined }}"
             sequence:
@@ -412,8 +417,7 @@ script:
       - delay: "00:00:04"
       - service: script.sonos_restore_snapshot
         data:
-          players:
-            template: "{{ players_list }}"
+          players: "{{ players_list }}"
 
   # ---------- GROUP PRESETS / TRANSFERS ----------
   tv_plus_kitchen:
