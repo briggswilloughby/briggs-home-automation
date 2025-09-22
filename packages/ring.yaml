@@ -73,7 +73,7 @@ script:
       chime_duration: "{{ chime_len | default('00:00:03', true) }}"
     sequence:
       - variables:
-          players: >-
+          player_list: >-
             {% set candidate = players | default([], true) %}
             {% if candidate is mapping and 'entity_id' in candidate %}
               {% set candidate = candidate.entity_id %}
@@ -110,29 +110,44 @@ script:
             {% endfor %}
             {{ ns.result | list }}
       - condition: template
-        value_template: "{{ player_targets | trim | length > 0 }}"
-      - service: sonos.snapshot
-        target:
-          entity_id: "{{ player_targets | trim }}"
-        data:
-          with_group: true
-      - service: media_player.volume_set
-        target:
-          entity_id: "{{ player_targets | trim }}"
-        data:
-          volume_level: "{{ chime_volume }}"
-      - service: media_player.play_media
-        target:
-          entity_id: "{{ player_targets | trim }}"
-        data:
-          media_content_id: "{{ chime_source }}"
-          media_content_type: music
-      - delay: "{{ chime_duration }}"
-      - service: sonos.restore
-        target:
-          entity_id: "{{ player_targets | trim }}"
-        data:
-          with_group: tru
+        value_template: "{{ player_list | length > 0 }}"
+      - repeat:
+          for_each: "{{ player_list }}"
+          sequence:
+            - service: sonos.snapshot
+              target:
+                entity_id: "{{ repeat.item }}"
+              data:
+                with_group: true
+      - repeat:
+          for_each: "{{ player_list }}"
+          sequence:
+            - service: media_player.volume_set
+              target:
+                entity_id: "{{ repeat.item }}"
+              data:
+                volume_level: "{{ chime_vol | float }}"
+      - repeat:
+          for_each: "{{ player_list }}"
+          sequence:
+            - service: media_player.play_media
+              target:
+                entity_id: "{{ repeat.item }}"
+              data:
+                entity_id: "{{ repeat.item }}"
+                media_content_id: "{{ chime_url }}"
+                media_content_type: music
+            - delay: "00:00:00.20"
+      - delay: "{{ chime_len }}"
+      - repeat:
+          for_each: "{{ player_list }}"
+          sequence:
+            - service: sonos.restore
+              target:
+                entity_id: "{{ repeat.item }}"
+              data:
+                with_group: true
+
 automation:
   - alias: Ring → Ding-Dong + Shelves Flash
     mode: single
