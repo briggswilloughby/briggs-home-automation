@@ -163,7 +163,6 @@ automation:
           motion: "{{ data.get('motion') }}"
           button_state: "{{ data.get('doorbellStatus') }}"
         value_template: >-
-        
           {% set raw_data = trigger.to_state.attributes.get('event_data') %}
           {% set data = raw_data if raw_data is mapping
              else (raw_data | from_json if raw_data is string else {}) %}
@@ -172,16 +171,18 @@ automation:
           {% set state = data.get('state') %}
           {% set motion = data.get('motion') %}
           {% set button_state = data.get('doorbellStatus') %}
-          {% if event_type == 'ding'
-             and (kind is none or kind in ['ding', 'doorbell', 'on_demand_ding', 'remote_ding'])
-             and (state is none or state in ['ringing', 'starting', 'doorbell', 'button', 'on_demand']
-                  or button_state in ['ringing', 'pressed', 'start'])
-             and motion in [none, false, 'false', 'False'] %}
-            true
-          {% else %}
-            false
-          {% endif %}
-
+          {% set is_ding = (
+            event_type == 'ding'
+            and (kind is none or kind in ['ding', 'doorbell', 'on_demand_ding', 'remote_ding'])
+            and (
+              state is none
+              or state in ['ringing', 'starting', 'doorbell', 'button', 'on_demand']
+              or button_state in ['ringing', 'pressed', 'start']
+            )
+            and motion in [none, false, 'false', 'False']
+          ) %}
+          {{ 'true' if is_ding else 'false' }}
+          
     action:
       - service: script.turn_on
         target:
