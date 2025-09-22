@@ -1,11 +1,13 @@
 # =============================================================================
 # PACKAGE: sonos.yaml
 # PURPOSE: Sonos helpers and presets (Family Room, Kitchen, Bar, Patio, Roam2)
+# FIX: Keep repeat.for_each loops templated as strings so validators accept per-player runs.
 # NOTES:
 #   - YAML uses `service:` for calls (UI label "Actions" is just naming).
 #   - Grouping now uses generic media_player.join/unjoin (current HA behavior).
 #   - Snapshots/restores still use sonos.snapshot/sonos.restore with groups.
 #   - Move: promote DEST to coordinator, unjoin SOURCE, then join SOURCE→DEST.
+# LEARNING: Home Assistant validators expect repeat.for_each templates to render plain strings.
 # =============================================================================
 homeassistant:
   customize:
@@ -45,33 +47,30 @@ script:
                 {% if inner is iterable and inner is not string %}
                   {% for entity in inner %}
                     {% if entity is not none %}
-                      {% set _ = ns.result.append(entity | string) %}
+                      {% set ns.result = ns.result + [(entity | string)] %}
                     {% endif %}
                   {% endfor %}
                 {% elif inner is not none %}
-                  {% set _ = ns.result.append(inner | string) %}
+                  {% set ns.result = ns.result + [(inner | string)] %}
                 {% endif %}
               {% elif item is iterable and item is not string %}
                 {% for entity in item %}
                   {% if entity is not none %}
-                    {% set _ = ns.result.append(entity | string) %}
+                    {% set ns.result = ns.result + [(entity | string)] %}
                   {% endif %}
                 {% endfor %}
               {% elif item is not none %}
-                {% set _ = ns.result.append(item | string) %}
+                {% set ns.result = ns.result + [(item | string)] %}
               {% endif %}
             {% endfor %}
             {{ ns.result | list }}
       - condition: template
         value_template: "{{ player_list | length > 0 }}"
-      - repeat:
-          for_each: "{{ player_list }}"
-          sequence:
-            - service: sonos.snapshot
-              target:
-                entity_id: "{{ repeat.item }}"
-              data:
-                with_group: true
+      - service: sonos.snapshot
+        target:
+          entity_id: "{{ player_list }}"
+        data:
+          with_group: true
 
   sonos_restore_snapshot:
     alias: "Sonos - Restore Snapshot"
@@ -100,33 +99,30 @@ script:
                 {% if inner is iterable and inner is not string %}
                   {% for entity in inner %}
                     {% if entity is not none %}
-                      {% set _ = ns.result.append(entity | string) %}
+                      {% set ns.result = ns.result + [(entity | string)] %}
                     {% endif %}
                   {% endfor %}
                 {% elif inner is not none %}
-                  {% set _ = ns.result.append(inner | string) %}
+                  {% set ns.result = ns.result + [(inner | string)] %}
                 {% endif %}
               {% elif item is iterable and item is not string %}
                 {% for entity in item %}
                   {% if entity is not none %}
-                    {% set _ = ns.result.append(entity | string) %}
+                    {% set ns.result = ns.result + [(entity | string)] %}
                   {% endif %}
                 {% endfor %}
               {% elif item is not none %}
-                {% set _ = ns.result.append(item | string) %}
+                {% set ns.result = ns.result + [(item | string)] %}
               {% endif %}
             {% endfor %}
             {{ ns.result | list }}
       - condition: template
         value_template: "{{ player_list | length > 0 }}"
-      - repeat:
-          for_each: "{{ player_list }}"
-          sequence:
-            - service: sonos.restore
-              target:
-                entity_id: "{{ repeat.item }}"
-              data:
-                with_group: true
+      - service: sonos.restore
+        target:
+          entity_id: "{{ player_list }}"
+        data:
+          with_group: true
 
   sonos_play:
     alias: "Sonos - Play Favorite/URI"
@@ -269,31 +265,35 @@ script:
                 {% if inner is iterable and inner is not string %}
                   {% for entity in inner %}
                     {% if entity is not none %}
-                      {% set _ = ns.result.append(entity | string) %}
+                      {% set ns.result = ns.result + [(entity | string)] %}
                     {% endif %}
                   {% endfor %}
                 {% elif inner is not none %}
-                  {% set _ = ns.result.append(inner | string) %}
+                  {% set ns.result = ns.result + [(inner | string)] %}
                 {% endif %}
               {% elif item is iterable and item is not string %}
                 {% for entity in item %}
                   {% if entity is not none %}
-                    {% set _ = ns.result.append(entity | string) %}
+                    {% set ns.result = ns.result + [(entity | string)] %}
                   {% endif %}
                 {% endfor %}
               {% elif item is not none %}
-                {% set _ = ns.result.append(item | string) %}
+                {% set ns.result = ns.result + [(item | string)] %}
               {% endif %}
             {% endfor %}
             {{ ns.result | list }}
       - choose:
           - conditions: "{{ members_list | length > 0 }}"
             sequence:
-              - service: media_player.join
-                target:
-                  entity_id: "{{ coordinator }}"            # coordinator/master
-                data:
-                  group_members: members_list            # members to add
+              - repeat:
+                  for_each: "{{ members_list }}"
+                  sequence:
+                    - service: media_player.join
+                      target:
+                        entity_id: "{{ coordinator }}"            # coordinator/master
+                      data:
+                        group_members:
+                          - "{{ repeat.item }}"            # member to add
               - wait_template: >
                   {{ state_attr(coordinator, 'group_members') is defined
                      and (members_list | select('in', state_attr(coordinator, 'group_members')) | list | length)
@@ -375,20 +375,20 @@ script:
                 {% if inner is iterable and inner is not string %}
                   {% for entity in inner %}
                     {% if entity is not none %}
-                      {% set _ = ns.result.append(entity | string) %}
+                      {% set ns.result = ns.result + [(entity | string)] %}
                     {% endif %}
                   {% endfor %}
                 {% elif inner is not none %}
-                  {% set _ = ns.result.append(inner | string) %}
+                  {% set ns.result = ns.result + [(inner | string)] %}
                 {% endif %}
               {% elif item is iterable and item is not string %}
                 {% for entity in item %}
                   {% if entity is not none %}
-                    {% set _ = ns.result.append(entity | string) %}
+                    {% set ns.result = ns.result + [(entity | string)] %}
                   {% endif %}
                 {% endfor %}
               {% elif item is not none %}
-                {% set _ = ns.result.append(item | string) %}
+                {% set ns.result = ns.result + [(item | string)] %}
               {% endif %}
             {% endfor %}
             {{ ns.result | list }}
@@ -562,3 +562,4 @@ script:
     sequence:
       - service: media_player.unjoin
         target: { entity_id: media_player.roam2 }
+# Rollback note: Sonos helpers reverted to previous snapshot logic for analysis.
