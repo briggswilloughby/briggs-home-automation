@@ -1,6 +1,7 @@
 # =============================================================================
 # PACKAGE: ring.yaml
 # PURPOSE: Ring ding → flash Shelly shelves + play chime on Kitchen & Patio Sonos
+# FIX: Launch Sonos chime asynchronously before Shelly flash for quicker audio start.
 #
 # DEPENDS ON:
 #   - Shelly shelves package providing script.shelves_doorbell_flash
@@ -18,13 +19,58 @@ script:
   sonos_doorbell_chime:
     alias: Sonos - Doorbell Chime (Kitchen + Patio)
     mode: single
-    variables:
+    fields:
       players:
-        - media_player.kitchen
-        - media_player.patio
-      chime_url: "media-source://media_source/local/dingdong.mp3"  # /config/www/dingdong.mp3
-      chime_vol: 0.40
-      chime_len: "00:00:03"
+        description: Sonos speakers that should play the chime
+        example: "media_player.kitchen"
+        default:
+          - media_player.kitchen
+          - media_player.patio
+        selector:
+          entity:
+            domain: media_player
+            multiple: true
+      chime_url:
+        description: Media URL or media-source path for the chime clip
+        example: "http://192.168.68.86:8123/local/dingdong.mp3"
+        default: "http://192.168.68.86:8123/local/dingdong.mp3"  # /config/www/dingdong.mp3
+        selector:
+          text:
+      chime_vol:
+        description: Temporary volume level (0.0 - 1.0) while the chime plays
+        example: 0.4
+        default: 0.4
+        selector:
+          number:
+            min: 0
+            max: 1
+            step: 0.01
+      chime_len:
+        description: How long to wait before restoring the Sonos snapshot
+        example: "00:00:03"
+        default: "00:00:03"
+        selector:
+          text:
+    variables:
+      player_targets: |-
+        {% set default_players = ['media_player.kitchen', 'media_player.patio'] %}
+        {% set candidate = players | default(default_players, true) %}
+        {% if candidate is mapping and 'entity_id' in candidate %}
+          {% set candidate = candidate.entity_id %}
+        {% endif %}
+        {% if candidate is iterable and candidate is not string %}
+          {% set items = candidate | map('string') | list %}
+          {{ items | join(', ') }}
+        {% elif candidate is string %}
+          {{ candidate }}
+        {% elif candidate is not none %}
+          {{ candidate | string }}
+        {% else %}
+          {{ '' }}
+        {% endif %}
+      chime_source: "{{ chime_url | default('http://192.168.68.86:8123/local/dingdong.mp3', true) }}"
+      chime_volume: "{{ chime_vol | default(0.4, true) | float }}"
+      chime_duration: "{{ chime_len | default('00:00:03', true) }}"
     sequence:
       - variables:
           players: >-
@@ -64,38 +110,29 @@ script:
             {% endfor %}
             {{ ns.result | list }}
       - condition: template
-        value_template: "{{ players | length > 0 }}"
+        value_template: "{{ player_targets | trim | length > 0 }}"
       - service: sonos.snapshot
         target:
-          entity_id: "{{ players }}"
+          entity_id: "{{ player_targets | trim }}"
         data:
           with_group: true
-      - repeat:
-          for_each: "{{ players }}"
-          sequence:
-            - service: media_player.volume_set
-              target:
-                entity_id: "{{ repeat.item }}"
-              data:
-                volume_level: "{{ chime_vol | float }}"
-      - repeat:
-          for_each: "{{ players }}"
-          sequence:
-            - service: media_player.play_media
-              target:
-                entity_id: "{{ repeat.item }}"
-              data:
-                entity_id: "{{ repeat.item }}"
-                media_content_id: "{{ chime_url }}"
-                media_content_type: music
-            - delay: "00:00:00.20"
-      - delay: "{{ chime_len }}"
+      - service: media_player.volume_set
+        target:
+          entity_id: "{{ player_targets | trim }}"
+        data:
+          volume_level: "{{ chime_volume }}"
+      - service: media_player.play_media
+        target:
+          entity_id: "{{ player_targets | trim }}"
+        data:
+          media_content_id: "{{ chime_source }}"
+          media_content_type: music
+      - delay: "{{ chime_duration }}"
       - service: sonos.restore
         target:
-          entity_id: "{{ players }}"
+          entity_id: "{{ player_targets | trim }}"
         data:
-          with_group: true
-
+          with_group: tru
 automation:
   - alias: Ring → Ding-Dong + Shelves Flash
     mode: single
@@ -133,7 +170,11 @@ automation:
              and motion_clear }}
 
     action:
-      - service: script.shelves_doorbell_flash
-      - delay: "00:00:00.15"     # tiny stagger so Shellys start before audio
-      - service: script.sonos_doorbell_chime
+      - service: script.turn_on
+        target:
+          entity_id: script.sonos_doorbell_chime
+      - delay: "00:00:00.10"     # tiny stagger so shelves trail the audio start
+      - service: script.turn_on
+        target:
+          entity_id: script.shelves_doorbell_flash
       - delay: "00:00:04"        # absorb duplicates
