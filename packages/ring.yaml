@@ -163,10 +163,21 @@ automation:
           motion: "{{ data.get('motion') }}"
           button_state: "{{ data.get('doorbellStatus') }}"
         value_template: >-
-          {% set raw_data = trigger.to_state.attributes.get('event_data') %}
-          {% set data = raw_data if raw_data is mapping
-             else (raw_data | from_json if raw_data is string else {}) %}
-          {% set event_type = trigger.to_state.attributes.get('event_type') %}
+          {% set attrs = trigger.to_state.attributes %}
+          {% set event_type = attrs.get('event_type') %}
+          {% set raw_data = attrs.get('event_data') %}
+          {% if raw_data is string %}
+            {% set parsed = raw_data | from_json %}
+            {% if parsed is mapping %}
+              {% set data = parsed %}
+            {% else %}
+              {% set data = dict() %}
+            {% endif %}
+          {% elif raw_data is mapping %}
+            {% set data = raw_data %}
+          {% else %}
+            {% set data = dict() %}
+          {% endif %}
           {% set kind = data.get('kind') %}
           {% set state = data.get('state') %}
           {% set motion = data.get('motion') %}
