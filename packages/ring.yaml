@@ -95,8 +95,7 @@ script:
         target:
           entity_id: "{{ player_targets | trim }}"
         data:
-          with_group: true
-
+          with_group: tru
 automation:
   - alias: Ring → Ding-Dong + Shelves Flash
     mode: single
