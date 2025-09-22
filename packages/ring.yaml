@@ -72,6 +72,43 @@ script:
       chime_volume: "{{ chime_vol | default(0.4, true) | float }}"
       chime_duration: "{{ chime_len | default('00:00:03', true) }}"
     sequence:
+      - variables:
+          players: >-
+            {% set candidate = players | default([], true) %}
+            {% if candidate is mapping and 'entity_id' in candidate %}
+              {% set candidate = candidate.entity_id %}
+            {% endif %}
+            {% if candidate is none %}
+              {% set items = [] %}
+            {% elif candidate is iterable and candidate is not string %}
+              {% set items = candidate | list %}
+            {% else %}
+              {% set items = [candidate] %}
+            {% endif %}
+            {% set ns = namespace(result=[]) %}
+            {% for item in items %}
+              {% if item is mapping and 'entity_id' in item %}
+                {% set inner = item.entity_id %}
+                {% if inner is iterable and inner is not string %}
+                  {% for entity in inner %}
+                    {% if entity is not none %}
+                      {% set ns.result = ns.result + [(entity | string)] %}
+                    {% endif %}
+                  {% endfor %}
+                {% elif inner is not none %}
+                  {% set ns.result = ns.result + [(inner | string)] %}
+                {% endif %}
+              {% elif item is iterable and item is not string %}
+                {% for entity in item %}
+                  {% if entity is not none %}
+                    {% set ns.result = ns.result + [(entity | string)] %}
+                  {% endif %}
+                {% endfor %}
+              {% elif item is not none %}
+                {% set ns.result = ns.result + [(item | string)] %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.result | list }}
       - condition: template
         value_template: "{{ player_targets | trim | length > 0 }}"
       - service: sonos.snapshot
