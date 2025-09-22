@@ -1,5 +1,7 @@
 # /config/packages/shelly_shelves.yaml
 # Shelly Shelves: groups, modes, brightness step, robust flashers (scene-based restore)
+# FIX: Mode and wrapper scripts call helpers directly so the sandbox stays happy.
+# LEARNING: Replace templated service names with explicit choose blocks to satisfy the script sandbox.
 
 #####################
 # 1) LIGHT GROUPS
@@ -134,25 +136,65 @@ script:
     alias: Shelves - Next Mode
     mode: single
     sequence:
-      - variables:
-          order: ["tv","chill","party","game_day"]
-          cur: "{{ states('input_select.shelf_mode') }}"
-          idx: >-
-            {% set i = order.index(cur) if cur in order else -1 %}
-            {{ (i + 1) % order|length }}
-      - service: "script.shelf_set_mode_{{ order[idx] }}"
+      - choose:
+          - conditions:
+              - condition: state
+                entity_id: input_select.shelf_mode
+                state: tv
+            sequence:
+              - service: script.shelf_set_mode_chill
+          - conditions:
+              - condition: state
+                entity_id: input_select.shelf_mode
+                state: chill
+            sequence:
+              - service: script.shelf_set_mode_party
+          - conditions:
+              - condition: state
+                entity_id: input_select.shelf_mode
+                state: party
+            sequence:
+              - service: script.shelf_set_mode_game_day
+          - conditions:
+              - condition: state
+                entity_id: input_select.shelf_mode
+                state: game_day
+            sequence:
+              - service: script.shelf_set_mode_tv
+        default:
+          - service: script.shelf_set_mode_tv
 
   shelves_prev_mode:
     alias: Shelves - Previous Mode
     mode: single
     sequence:
-      - variables:
-          order: ["tv","chill","party","game_day"]
-          cur: "{{ states('input_select.shelf_mode') }}"
-          idx: >-
-            {% set i = order.index(cur) if cur in order else 0 %}
-            {{ (i - 1) % order|length }}
-      - service: "script.shelf_set_mode_{{ order[idx] }}"
+      - choose:
+          - conditions:
+              - condition: state
+                entity_id: input_select.shelf_mode
+                state: tv
+            sequence:
+              - service: script.shelf_set_mode_game_day
+          - conditions:
+              - condition: state
+                entity_id: input_select.shelf_mode
+                state: chill
+            sequence:
+              - service: script.shelf_set_mode_tv
+          - conditions:
+              - condition: state
+                entity_id: input_select.shelf_mode
+                state: party
+            sequence:
+              - service: script.shelf_set_mode_chill
+          - conditions:
+              - condition: state
+                entity_id: input_select.shelf_mode
+                state: game_day
+            sequence:
+              - service: script.shelf_set_mode_party
+        default:
+          - service: script.shelf_set_mode_tv
 
   # ---- Brightness step (robust; uses brightness_step_pct) ----
   shelves_brightness_step:
@@ -233,10 +275,8 @@ script:
             - light.shelf_3
             - light.shelf_4
           sequence:
-            - service: light.turn_on
+            - service: homeassistant.update_entity
               target: { entity_id: "{{ repeat.item }}" }
-              data:
-                transition: 0
 
   # ---- Doorbell Flash (scene snapshot → red x3 → restore) ----
   shelves_doorbell_flash:
@@ -285,10 +325,8 @@ script:
             - light.shelf_3
             - light.shelf_4
           sequence:
-            - service: light.turn_on
+            - service: homeassistant.update_entity
               target: { entity_id: "{{ repeat.item }}" }
-              data:
-                transition: 0
 
   # ---- (Optional) Shelf 2 – Probe Restore (single-light test) ----
   shelf2_probe_restore:
@@ -378,7 +416,7 @@ script:
           bp: "{{ bright | int }}"
           tr: "{{ trans | float(0) }}"
       - repeat:
-          for_each: "{{ targets_json }}"
+          for_each: "{{ targets }}"
           sequence:
             - service: light.turn_on
               target:
