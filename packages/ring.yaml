@@ -111,14 +111,12 @@ script:
             {{ ns.result | list }}
       - condition: template
         value_template: "{{ player_list | length > 0 }}"
-      - repeat:
-          for_each: "{{ player_list }}"
-          sequence:
-            - service: sonos.snapshot
-              target:
-                entity_id: "{{ repeat.item }}"
-              data:
-                with_group: true
+
+      - service: sonos.snapshot
+        target:
+          entity_id: "{{ player_list }}"
+        data:
+          with_group: true
       - repeat:
           for_each: "{{ player_list }}"
           sequence:
@@ -139,15 +137,12 @@ script:
                 media_content_type: music
             - delay: "00:00:00.20"
       - delay: "{{ chime_len }}"
-      - repeat:
-          for_each: "{{ player_list }}"
-          sequence:
-            - service: sonos.restore
-              target:
-                entity_id: "{{ repeat.item }}"
-              data:
-                with_group: true
 
+      - service: sonos.restore
+        target:
+          entity_id: "{{ player_list }}"
+        data:
+          with_group: true
 automation:
   - alias: Ring → Ding-Dong + Shelves Flash
     mode: single

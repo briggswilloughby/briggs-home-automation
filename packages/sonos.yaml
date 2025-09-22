@@ -66,14 +66,11 @@ script:
             {{ ns.result | list }}
       - condition: template
         value_template: "{{ player_list | length > 0 }}"
-      - repeat:
-          for_each: "{{ player_list }}"
-          sequence:
-            - service: sonos.snapshot
-              target:
-                entity_id: "{{ repeat.item }}"
-              data:
-                with_group: true
+      - service: sonos.snapshot
+        target:
+          entity_id: "{{ player_list }}"
+        data:
+          with_group: true
 
   sonos_restore_snapshot:
     alias: "Sonos - Restore Snapshot"
@@ -121,14 +118,11 @@ script:
             {{ ns.result | list }}
       - condition: template
         value_template: "{{ player_list | length > 0 }}"
-      - repeat:
-          for_each: "{{ player_list }}"
-          sequence:
-            - service: sonos.restore
-              target:
-                entity_id: "{{ repeat.item }}"
-              data:
-                with_group: true
+      - service: sonos.restore
+        target:
+          entity_id: "{{ player_list }}"
+        data:
+          with_group: true
 
   sonos_play:
     alias: "Sonos - Play Favorite/URI"
