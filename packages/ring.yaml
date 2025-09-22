@@ -46,23 +46,23 @@ script:
                 {% if inner is iterable and inner is not string %}
                   {% for entity in inner %}
                     {% if entity is not none %}
-                      {% set _ = ns.result.append(entity | string) %}
+                      {% set ns.result = ns.result + [(entity | string)] %}
                     {% endif %}
                   {% endfor %}
                 {% elif inner is not none %}
-                  {% set _ = ns.result.append(inner | string) %}
+                  {% set ns.result = ns.result + [(inner | string)] %}
                 {% endif %}
               {% elif item is iterable and item is not string %}
                 {% for entity in item %}
                   {% if entity is not none %}
-                    {% set _ = ns.result.append(entity | string) %}
+                    {% set ns.result = ns.result + [(entity | string)] %}
                   {% endif %}
                 {% endfor %}
               {% elif item is not none %}
-                {% set _ = ns.result.append(item | string) %}
+                {% set ns.result = ns.result + [(item | string)] %}
               {% endif %}
             {% endfor %}
-            {{ ns.result }}
+            {{ ns.result | list }}
       - condition: template
         value_template: "{{ players | length > 0 }}"
       - service: sonos.snapshot
@@ -106,34 +106,27 @@ automation:
     condition:
       - condition: template
         value_template: >-
-          {% set attrs = trigger.to_state.attributes %}
-          {% set event_type = attrs.get('event_type') %}
-          {% set raw_data = attrs.get('event_data') %}
-          {% if raw_data is string %}
-            {% set parsed = raw_data | from_json %}
-            {% if parsed is mapping %}
-              {% set data = parsed %}
-            {% else %}
-              {% set data = {} %}
-            {% endif %}
-          {% elif raw_data is mapping %}
-            {% set data = raw_data %}
-          {% else %}
-            {% set data = {} %}
-          {% endif %}
+          {% set raw_data = trigger.to_state.attributes.get('event_data') %}
+          {% set data = raw_data if raw_data is mapping
+             else (raw_data | from_json if raw_data is string else {}) %}
+          {% set event_type = trigger.to_state.attributes.get('event_type') %}
           {% set kind = data.get('kind') %}
           {% set state = data.get('state') %}
           {% set motion = data.get('motion') %}
           {% set button_state = data.get('doorbellStatus') %}
-          {% set valid_states = ['ringing', 'starting', 'doorbell', 'button', 'on_demand'] %}
-          {% set motion_clear = motion in [none, false, 'false', 'False'] %}
-          {{ event_type == 'ding'
+          {% if event_type == 'ding'
              and (kind is none or kind in ['ding', 'doorbell', 'on_demand_ding', 'remote_ding'])
-             and (state is none or state in valid_states or button_state in ['ringing', 'pressed', 'start'])
-             and motion_clear }}
+             and (state is none or state in ['ringing', 'starting', 'doorbell', 'button', 'on_demand']
+                  or button_state in ['ringing', 'pressed', 'start'])
+             and motion in [none, false, 'false', 'False'] %}
+            true
+          {% else %}
+            false
+          {% endif %}
 
     action:
       - service: script.shelves_doorbell_flash
       - delay: "00:00:00.15"     # tiny stagger so Shellys start before audio
       - service: script.sonos_doorbell_chime
       - delay: "00:00:04"        # absorb duplicates
+# Rollback note: Restored prior ring chime flow while investigating regressions.
