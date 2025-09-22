@@ -155,10 +155,7 @@ automation:
       ring_event_type: "{{ ring_attrs.get('event_type') }}"
       ring_raw_data: "{{ ring_attrs.get('event_data') }}"
       ring_parsed_data: "{{ ring_raw_data | from_json(default=dict()) if ring_raw_data is string else dict() }}"
-      ring_data: >-
-        {{ iif(ring_raw_data is mapping,
-               ring_raw_data,
-               iif(ring_parsed_data is mapping, ring_parsed_data, dict())) }}
+      ring_data: "{{ ring_raw_data if ring_raw_data is mapping else (ring_parsed_data if ring_parsed_data is mapping else dict()) }}"
       ring_kind: "{{ ring_data.get('kind') }}"
       ring_state: "{{ ring_data.get('state') }}"
       ring_motion: "{{ ring_data.get('motion') }}"
