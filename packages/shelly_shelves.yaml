@@ -443,3 +443,4 @@ automation:
             sequence: [{ service: script.shelf_set_mode_party }]
           - conditions: "{{ states('input_select.shelf_mode') == 'game_day' }}"
             sequence: [{ service: script.shelf_set_mode_game_day }]
+# Rollback note: Restored earlier Shelly shelves helper behavior for debugging.

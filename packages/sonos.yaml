@@ -562,3 +562,4 @@ script:
     sequence:
       - service: media_player.unjoin
         target: { entity_id: media_player.roam2 }
+# Rollback note: Sonos helpers reverted to previous snapshot logic for analysis.

@@ -110,9 +110,9 @@ script:
             {% endfor %}
             {{ ns.result | list }}
       - condition: template
-        value_template: "{{ player_list | length > 0 }}"
-
-      - service: sonos.snapshot
+        value_template: "{{ player_list | length > 0 }
+     
+     - service: sonos.snapshot
         target:
           entity_id: "{{ player_list }}"
         data:
@@ -188,3 +188,4 @@ automation:
         target:
           entity_id: script.shelves_doorbell_flash
       - delay: "00:00:04"        # absorb duplicates
+# Rollback note: Restored prior ring chime flow while investigating regressions.
