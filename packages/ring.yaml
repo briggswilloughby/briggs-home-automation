@@ -46,23 +46,23 @@ script:
                 {% if inner is iterable and inner is not string %}
                   {% for entity in inner %}
                     {% if entity is not none %}
-                      {% set _ = ns.result.append(entity | string) %}
+                      {% set ns.result = ns.result + [(entity | string)] %}
                     {% endif %}
                   {% endfor %}
                 {% elif inner is not none %}
-                  {% set _ = ns.result.append(inner | string) %}
+                  {% set ns.result = ns.result + [(inner | string)] %}
                 {% endif %}
               {% elif item is iterable and item is not string %}
                 {% for entity in item %}
                   {% if entity is not none %}
-                    {% set _ = ns.result.append(entity | string) %}
+                    {% set ns.result = ns.result + [(entity | string)] %}
                   {% endif %}
                 {% endfor %}
               {% elif item is not none %}
-                {% set _ = ns.result.append(item | string) %}
+                {% set ns.result = ns.result + [(item | string)] %}
               {% endif %}
             {% endfor %}
-            {{ ns.result }}
+            {{ ns.result | list }}
       - condition: template
         value_template: "{{ players | length > 0 }}"
       - service: sonos.snapshot
@@ -137,3 +137,4 @@ automation:
       - delay: "00:00:00.15"     # tiny stagger so Shellys start before audio
       - service: script.sonos_doorbell_chime
       - delay: "00:00:04"        # absorb duplicates
+# Rollback note: Restored prior ring chime flow while investigating regressions.

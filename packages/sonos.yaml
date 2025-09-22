@@ -45,33 +45,30 @@ script:
                 {% if inner is iterable and inner is not string %}
                   {% for entity in inner %}
                     {% if entity is not none %}
-                      {% set _ = ns.result.append(entity | string) %}
+                      {% set ns.result = ns.result + [(entity | string)] %}
                     {% endif %}
                   {% endfor %}
                 {% elif inner is not none %}
-                  {% set _ = ns.result.append(inner | string) %}
+                  {% set ns.result = ns.result + [(inner | string)] %}
                 {% endif %}
               {% elif item is iterable and item is not string %}
                 {% for entity in item %}
                   {% if entity is not none %}
-                    {% set _ = ns.result.append(entity | string) %}
+                    {% set ns.result = ns.result + [(entity | string)] %}
                   {% endif %}
                 {% endfor %}
               {% elif item is not none %}
-                {% set _ = ns.result.append(item | string) %}
+                {% set ns.result = ns.result + [(item | string)] %}
               {% endif %}
             {% endfor %}
             {{ ns.result | list }}
       - condition: template
         value_template: "{{ player_list | length > 0 }}"
-      - repeat:
-          for_each: "{{ player_list }}"
-          sequence:
-            - service: sonos.snapshot
-              target:
-                entity_id: "{{ repeat.item }}"
-              data:
-                with_group: true
+      - service: sonos.snapshot
+        target:
+          entity_id: "{{ player_list }}"
+        data:
+          with_group: true
 
   sonos_restore_snapshot:
     alias: "Sonos - Restore Snapshot"
@@ -100,33 +97,30 @@ script:
                 {% if inner is iterable and inner is not string %}
                   {% for entity in inner %}
                     {% if entity is not none %}
-                      {% set _ = ns.result.append(entity | string) %}
+                      {% set ns.result = ns.result + [(entity | string)] %}
                     {% endif %}
                   {% endfor %}
                 {% elif inner is not none %}
-                  {% set _ = ns.result.append(inner | string) %}
+                  {% set ns.result = ns.result + [(inner | string)] %}
                 {% endif %}
               {% elif item is iterable and item is not string %}
                 {% for entity in item %}
                   {% if entity is not none %}
-                    {% set _ = ns.result.append(entity | string) %}
+                    {% set ns.result = ns.result + [(entity | string)] %}
                   {% endif %}
                 {% endfor %}
               {% elif item is not none %}
-                {% set _ = ns.result.append(item | string) %}
+                {% set ns.result = ns.result + [(item | string)] %}
               {% endif %}
             {% endfor %}
             {{ ns.result | list }}
       - condition: template
         value_template: "{{ player_list | length > 0 }}"
-      - repeat:
-          for_each: "{{ player_list }}"
-          sequence:
-            - service: sonos.restore
-              target:
-                entity_id: "{{ repeat.item }}"
-              data:
-                with_group: true
+      - service: sonos.restore
+        target:
+          entity_id: "{{ player_list }}"
+        data:
+          with_group: true
 
   sonos_play:
     alias: "Sonos - Play Favorite/URI"
@@ -269,20 +263,20 @@ script:
                 {% if inner is iterable and inner is not string %}
                   {% for entity in inner %}
                     {% if entity is not none %}
-                      {% set _ = ns.result.append(entity | string) %}
+                      {% set ns.result = ns.result + [(entity | string)] %}
                     {% endif %}
                   {% endfor %}
                 {% elif inner is not none %}
-                  {% set _ = ns.result.append(inner | string) %}
+                  {% set ns.result = ns.result + [(inner | string)] %}
                 {% endif %}
               {% elif item is iterable and item is not string %}
                 {% for entity in item %}
                   {% if entity is not none %}
-                    {% set _ = ns.result.append(entity | string) %}
+                    {% set ns.result = ns.result + [(entity | string)] %}
                   {% endif %}
                 {% endfor %}
               {% elif item is not none %}
-                {% set _ = ns.result.append(item | string) %}
+                {% set ns.result = ns.result + [(item | string)] %}
               {% endif %}
             {% endfor %}
             {{ ns.result | list }}
@@ -375,20 +369,20 @@ script:
                 {% if inner is iterable and inner is not string %}
                   {% for entity in inner %}
                     {% if entity is not none %}
-                      {% set _ = ns.result.append(entity | string) %}
+                      {% set ns.result = ns.result + [(entity | string)] %}
                     {% endif %}
                   {% endfor %}
                 {% elif inner is not none %}
-                  {% set _ = ns.result.append(inner | string) %}
+                  {% set ns.result = ns.result + [(inner | string)] %}
                 {% endif %}
               {% elif item is iterable and item is not string %}
                 {% for entity in item %}
                   {% if entity is not none %}
-                    {% set _ = ns.result.append(entity | string) %}
+                    {% set ns.result = ns.result + [(entity | string)] %}
                   {% endif %}
                 {% endfor %}
               {% elif item is not none %}
-                {% set _ = ns.result.append(item | string) %}
+                {% set ns.result = ns.result + [(item | string)] %}
               {% endif %}
             {% endfor %}
             {{ ns.result | list }}
@@ -407,8 +401,7 @@ script:
                   sequence:
                     - service: media_player.volume_set
                       target:
-                        entity_id:
-                          template: "{{ repeat.item }}"
+                        entity_id: "{{ repeat.item }}"
                       data:
                         volume_level: "{{ volume | float }}"
       - service: "{{ tts }}"
@@ -565,3 +558,4 @@ script:
     sequence:
       - service: media_player.unjoin
         target: { entity_id: media_player.roam2 }
+# Rollback note: Sonos helpers reverted to previous snapshot logic for analysis.
