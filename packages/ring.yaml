@@ -62,7 +62,7 @@ script:
                 {% set _ = ns.result.append(item | string) %}
               {% endif %}
             {% endfor %}
-            {{ ns.result }}
+            {{ ns.result | list }}
       - condition: template
         value_template: "{{ players | length > 0 }}"
       - service: sonos.snapshot
@@ -103,34 +103,26 @@ automation:
     trigger:
       - platform: state
         entity_id: event.front_door_ding   # state changes to a new timestamp each press
+    variables:
+      ring_attrs: "{{ trigger.to_state.attributes }}"
+      ring_event_type: "{{ ring_attrs.get('event_type') }}"
+      ring_raw_data: "{{ ring_attrs.get('event_data') }}"
+      ring_parsed_data: "{{ ring_raw_data | from_json(default=dict()) if ring_raw_data is string else dict() }}"
+      # Normalized event_data payload from the Ring ding event for consistent lookups
+      ring_data: "{{ ring_raw_data if ring_raw_data is mapping else (ring_parsed_data if ring_parsed_data is mapping else dict()) }}"
+      ring_kind: "{{ ring_data.get('kind') }}"
+      ring_state: "{{ ring_data.get('state') }}"
+      ring_motion: "{{ ring_data.get('motion') }}"
+      ring_button_state: "{{ ring_data.get('doorbellStatus') }}"
+      ring_motion_clear: "{{ ring_motion in [none, false, 'false', 'False'] }}"
     condition:
       - condition: template
         value_template: >-
-          {% set attrs = trigger.to_state.attributes %}
-          {% set event_type = attrs.get('event_type') %}
-          {% set raw_data = attrs.get('event_data') %}
-          {% if raw_data is string %}
-            {% set parsed = raw_data | from_json %}
-            {% if parsed is mapping %}
-              {% set data = parsed %}
-            {% else %}
-              {% set data = {} %}
-            {% endif %}
-          {% elif raw_data is mapping %}
-            {% set data = raw_data %}
-          {% else %}
-            {% set data = {} %}
-          {% endif %}
-          {% set kind = data.get('kind') %}
-          {% set state = data.get('state') %}
-          {% set motion = data.get('motion') %}
-          {% set button_state = data.get('doorbellStatus') %}
-          {% set valid_states = ['ringing', 'starting', 'doorbell', 'button', 'on_demand'] %}
-          {% set motion_clear = motion in [none, false, 'false', 'False'] %}
-          {{ event_type == 'ding'
-             and (kind is none or kind in ['ding', 'doorbell', 'on_demand_ding', 'remote_ding'])
-             and (state is none or state in valid_states or button_state in ['ringing', 'pressed', 'start'])
-             and motion_clear }}
+          {{ ring_event_type == 'ding'
+             and (ring_kind is none or ring_kind in ['ding', 'doorbell', 'on_demand_ding', 'remote_ding'])
+             and (ring_state is none or ring_state in ['ringing', 'starting', 'doorbell', 'button', 'on_demand']
+                  or ring_button_state in ['ringing', 'pressed', 'start'])
+             and ring_motion_clear }}
 
     action:
       - service: script.shelves_doorbell_flash
