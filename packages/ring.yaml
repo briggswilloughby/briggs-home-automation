@@ -110,9 +110,9 @@ script:
             {% endfor %}
             {{ ns.result | list }}
       - condition: template
-        value_template: "{{ player_list | length > 0 }
-     
-     - service: sonos.snapshot
+        value_template: "{{ player_list | length > 0 }}"
+
+      - service: sonos.snapshot
         target:
           entity_id: "{{ player_list }}"
         data:
