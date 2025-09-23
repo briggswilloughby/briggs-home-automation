@@ -86,7 +86,7 @@ CHANGELOG.md # running log of change
 
 \- Google Assistant via Nabu Casa  
 
-## 🔗 Quick Access Links
+## Quick Access Links
 
 ### Core Docs
 - [KICKOFF.md](https://raw.githubusercontent.com/briggswilloughby/briggs-home-automation/main/KICKOFF.md)
@@ -99,6 +99,7 @@ CHANGELOG.md # running log of change
 - [shelves.yaml](https://raw.githubusercontent.com/briggswilloughby/briggs-home-automation/main/home-assistant/packages/shelves.yaml)
 
 # Briggs Home Automation Project
+
 
 
 
