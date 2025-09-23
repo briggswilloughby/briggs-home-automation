@@ -66,31 +66,31 @@ script:
             {% endfor %}
             {{ ns.result | list }}
       - condition: template
-        value_template: "{{ player_list | length > 0 }}"
+        value_template: '{{ player_list | length > 0 }}'
       - service: sonos.snapshot
         target:
           entity_id: "{{ player_list }}"
         data:
           with_group: true
       - repeat:
-          for_each: "{{ player_list }}"
-          sequence:
-            - service: media_player.volume_set
-              target:
-                entity_id: "{{ repeat.item }}"
-              data:
-                volume_level: "{{ chime_vol | float }}"
+        for_each: "{{ player_list }}"
+        sequence:
+          - service: media_player.volume_set
+            target:
+              entity_id: "{{ repeat.item }}"
+            data:
+              volume_level: "{{ chime_vol | float }}"
       - repeat:
-          for_each: "{{ player_list }}"
-          sequence:
-            - service: media_player.play_media
-              target:
-                entity_id: "{{ repeat.item }}"
-              data:
-                entity_id: "{{ repeat.item }}"
-                media_content_id: "{{ chime_url }}"
-                media_content_type: music
-            - delay: "00:00:00.20"
+        for_each: "{{ player_list }}"
+        sequence:
+          - service: media_player.play_media
+            target:
+              entity_id: "{{ repeat.item }}"
+            data:
+              entity_id: "{{ repeat.item }}"
+              media_content_id: "{{ chime_url }}"
+              media_content_type: music
+          - delay: "00:00:00.20"
       - delay: "{{ chime_len }}"
       - service: sonos.restore
         target:
