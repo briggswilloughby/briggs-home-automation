@@ -243,6 +243,9 @@ async def ring_doorbell_handler(value: str | None = None, **kwargs: Any) -> None
     chime_task = task.create(_run_sonos_doorbell_chime())
     flash_task = task.create(_run_shelves_doorbell_flash())
     try:
-        await task.wait_all(chime_task, flash_task)
+        await task.wait_all(
+            chime_task,
+            flash_task,
+        )
     finally:
         await task.sleep(4.0)
