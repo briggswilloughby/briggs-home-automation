@@ -10,7 +10,8 @@ Using generic events caused duplicate/false triggers and race conditions.
 ## Decision
 - Trigger on event.front_door_ding with event_type: ding
 - Use mode: single + **4s absorb delay** to suppress duplicates
-- Separate concerns: shelves flash in script.shelves_doorbell_flash, chime in script.sonos_ding
+- Separate concerns: Pyscript services handle shelves flash (pyscript.shelves_doorbell_flash_py)
+  and the Sonos chime (pyscript.sonos_doorbell_chime_py).
 
 ## Consequences
 - Reliable single action per press
