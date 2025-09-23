@@ -61,7 +61,7 @@ script:
     alias: "Combo - Doorbell Flash"
     mode: restart
     sequence:
-      - service: script.shelves_doorbell_flash
+      - service: pyscript.shelves_doorbell_flash_py
       # Optionally:
       # - service: script.sonos_announce
       #   data:
