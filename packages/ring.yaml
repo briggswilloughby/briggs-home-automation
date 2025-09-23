@@ -64,7 +64,6 @@ script:
 
 automation:
   - alias: Ring → Ding-Dong + Shelves Flash (legacy YAML)
-    enabled: false
     mode: single
     max_exceeded: silent
     trigger:
@@ -83,16 +82,6 @@ automation:
       ring_motion_clear: "{{ ring_motion in [none, false, 'false', 'False'] }}"
     condition:
       - condition: template
-        variables:
-          raw_data: "{{ trigger.to_state.attributes.get('event_data') }}"
-          data: >-
-            {{ raw_data if raw_data is mapping
-               else (raw_data | from_json if raw_data is string else {}) }}
-          event_type: "{{ trigger.to_state.attributes.get('event_type') }}"
-          kind: "{{ data.get('kind') }}"
-          state: "{{ data.get('state') }}"
-          motion: "{{ data.get('motion') }}"
-          button_state: "{{ data.get('doorbellStatus') }}"
         value_template: >-
           {{ ring_event_type == 'ding'
              and (ring_kind is none or ring_kind in ['ding', 'doorbell', 'on_demand_ding', 'remote_ding'])

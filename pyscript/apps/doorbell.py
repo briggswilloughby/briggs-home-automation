@@ -42,7 +42,8 @@ def _coerce_mapping(value: Any) -> dict[str, Any]:
     if isinstance(value, str):
         try:
             parsed = json.loads(value)
-        except ValueError:            try:
+        except ValueError:
+            try:
                 parsed = ast.literal_eval(value)
             except (ValueError, SyntaxError):
                 return {}
@@ -72,7 +73,6 @@ def _flatten_entities(value: Any) -> list[str]:
                 if decoded is not None:
                     _walk(decoded)
                     return
-
             if stripped:
                 result.append(stripped)
             return
