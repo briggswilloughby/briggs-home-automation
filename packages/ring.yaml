@@ -20,80 +20,89 @@ script:
   sonos_doorbell_chime:
     alias: Sonos - Doorbell Chime (Kitchen + Patio)
     mode: single
-    variables:
+    fields:
       players:
-        - media_player.kitchen
-        - media_player.patio
-      chime_url: "media-source://media_source/local/dingdong.mp3"  # /config/www/dingdong.mp3
-      chime_vol: 0.40
-      chime_len: "00:00:03"
+        description: Sonos speakers that should play the chime
+        example: "media_player.kitchen"
+        default:
+          - media_player.kitchen
+          - media_player.patio
+        selector:
+          entity:
+            domain: media_player
+            multiple: true
+      chime_url:
+        description: Media URL or media-source path for the chime clip
+        example: "http://192.168.68.86:8123/local/dingdong.mp3"
+        default: "http://192.168.68.86:8123/local/dingdong.mp3"  # /config/www/dingdong.mp3
+        selector:
+          text:
+      chime_vol:
+        description: Temporary volume level (0.0 - 1.0) while the chime plays
+        example: 0.4
+        default: 0.4
+        selector:
+          number:
+            min: 0
+            max: 1
+            step: 0.01
+      chime_len:
+        description: How long to wait before restoring the Sonos snapshot
+        example: "00:00:03"
+        default: "00:00:03"
+        selector:
+          text:
     sequence:
-      - variables:
-          player_list: >-
-            {% set candidate = players | default([], true) %}
-            {% if candidate is mapping and 'entity_id' in candidate %}
-              {% set candidate = candidate.entity_id %}
-            {% endif %}
-            {% if candidate is none %}
-              {% set items = [] %}
-            {% elif candidate is iterable and candidate is not string %}
-              {% set items = candidate | list %}
-            {% else %}
-              {% set items = [candidate] %}
-            {% endif %}
-            {% set ns = namespace(result=[]) %}
-            {% for item in items %}
-              {% if item is mapping and 'entity_id' in item %}
-                {% set inner = item.entity_id %}
-                {% if inner is iterable and inner is not string %}
-                  {% for entity in inner %}
-                    {% if entity is not none %}
-                      {% set ns.result = ns.result + [(entity | string)] %}
-                    {% endif %}
-                  {% endfor %}
-                {% elif inner is not none %}
-                  {% set ns.result = ns.result + [(inner | string)] %}
-                {% endif %}
-              {% elif item is iterable and item is not string %}
-                {% for entity in item %}
-                  {% if entity is not none %}
-                    {% set ns.result = ns.result + [(entity | string)] %}
-                  {% endif %}
-                {% endfor %}
-              {% elif item is not none %}
-                {% set ns.result = ns.result + [(item | string)] %}
-              {% endif %}
-            {% endfor %}
-            {{ ns.result | list }}
+      - service: pyscript.sonos_doorbell_chime_py
+        data: >-
+          {{ {
+            'players': players,
+            'chime_url': chime_url,
+            'chime_vol': chime_vol,
+            'chime_len': chime_len
+          } | tojson | from_json }}
+
+automation:
+  - alias: Ring → Ding-Dong + Shelves Flash (legacy YAML)
+    enabled: false
+    mode: single
+    max_exceeded: silent
+    trigger:
+      - platform: state
+        entity_id: event.front_door_ding   # state changes to a new timestamp each press
+    variables:
+      ring_attrs: "{{ trigger.to_state.attributes }}"
+      ring_event_type: "{{ ring_attrs.get('event_type') }}"
+      ring_raw_data: "{{ ring_attrs.get('event_data') }}"
+      ring_parsed_data: "{{ ring_raw_data | from_json(default=dict()) if ring_raw_data is string else dict() }}"
+      ring_data: "{{ ring_raw_data if ring_raw_data is mapping else (ring_parsed_data if ring_parsed_data is mapping else dict()) }}"
+      ring_kind: "{{ ring_data.get('kind') }}"
+      ring_state: "{{ ring_data.get('state') }}"
+      ring_motion: "{{ ring_data.get('motion') }}"
+      ring_button_state: "{{ ring_data.get('doorbellStatus') }}"
+      ring_motion_clear: "{{ ring_motion in [none, false, 'false', 'False'] }}"
+    condition:
       - condition: template
-        value_template: '{{ player_list | length > 0 }}'
-      - service: sonos.snapshot
-        target:
-          entity_id: "{{ player_list }}"
-        data:
-          with_group: true
-      - repeat:
-        for_each: "{{ player_list }}"
-        sequence:
-          - service: media_player.volume_set
-            target:
-              entity_id: "{{ repeat.item }}"
-            data:
-              volume_level: "{{ chime_vol | float }}"
-      - repeat:
-        for_each: "{{ player_list }}"
-        sequence:
-          - service: media_player.play_media
-            target:
-              entity_id: "{{ repeat.item }}"
-            data:
-              entity_id: "{{ repeat.item }}"
-              media_content_id: "{{ chime_url }}"
-              media_content_type: music
-          - delay: "00:00:00.20"
-      - delay: "{{ chime_len }}"
-      - service: sonos.restore
-        target:
-          entity_id: "{{ player_list }}"
-        data:
-          with_group: true
+        variables:
+          raw_data: "{{ trigger.to_state.attributes.get('event_data') }}"
+          data: >-
+            {{ raw_data if raw_data is mapping
+               else (raw_data | from_json if raw_data is string else {}) }}
+          event_type: "{{ trigger.to_state.attributes.get('event_type') }}"
+          kind: "{{ data.get('kind') }}"
+          state: "{{ data.get('state') }}"
+          motion: "{{ data.get('motion') }}"
+          button_state: "{{ data.get('doorbellStatus') }}"
+        value_template: >-
+          {{ ring_event_type == 'ding'
+             and (ring_kind is none or ring_kind in ['ding', 'doorbell', 'on_demand_ding', 'remote_ding'])
+             and (ring_state is none or ring_state in ['ringing', 'starting', 'doorbell', 'button', 'on_demand']
+                  or ring_button_state in ['ringing', 'pressed', 'start'])
+             and ring_motion_clear }}
+
+    action:
+      - service: pyscript.sonos_doorbell_chime_py
+      - delay: "00:00:00.10"     # tiny stagger so shelves trail the audio start
+      - service: pyscript.shelves_doorbell_flash_py
+      - delay: "00:00:04"        # absorb duplicates
+# Rollback note: Restored prior ring chime flow while investigating regressions.

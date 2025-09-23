@@ -10,6 +10,7 @@ unit-test pieces in isolation and use the module as a Python learning playground
 
 from __future__ import annotations
 
+import ast
 import json
 from datetime import timedelta
 from typing import Any, Iterable, Mapping
@@ -41,8 +42,10 @@ def _coerce_mapping(value: Any) -> dict[str, Any]:
     if isinstance(value, str):
         try:
             parsed = json.loads(value)
-        except ValueError:
-            return {}
+        except ValueError:            try:
+                parsed = ast.literal_eval(value)
+            except (ValueError, SyntaxError):
+                return {}
         if isinstance(parsed, Mapping):
             return dict(parsed)
     return {}
@@ -58,6 +61,18 @@ def _flatten_entities(value: Any) -> list[str]:
             return
         if isinstance(item, str):
             stripped = item.strip()
+            if stripped.startswith(("[", "{")):
+                try:
+                    decoded = json.loads(stripped)
+                except ValueError:
+                    try:
+                        decoded = ast.literal_eval(stripped)
+                    except (ValueError, SyntaxError):
+                        decoded = None
+                if decoded is not None:
+                    _walk(decoded)
+                    return
+
             if stripped:
                 result.append(stripped)
             return
