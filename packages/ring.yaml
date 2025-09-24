@@ -64,6 +64,7 @@ script:
 
 automation:
   - alias: Ring → Ding-Dong + Shelves Flash (legacy YAML)
+    initial_state: 'off'
     mode: single
     max_exceeded: silent
     trigger:
