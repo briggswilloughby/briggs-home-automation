@@ -8,10 +8,11 @@
 #   - File at /config/www/dingdong.mp3 (served via media-source://media_source/local/dingdong.mp3)
 #
 # NOTES:
-#   - All steps use `service:` (canonical). UI may say “Actions”, YAML uses `service`.
-#   - If you prefer a direct URL, swap chime_url to
-#       http://<HA-IP>:8123/local/dingdong.mp3
-#     and keep media_content_type: music.
+#   - The doorbell ding flow now lives in pyscript/apps/doorbell.py and exposes
+#     pyscript.sonos_doorbell_chime_py + pyscript.shelves_doorbell_flash_py services.
+#   - Legacy YAML automation/scripts were removed once the Pyscript handler became
+#     authoritative to prevent duplicate flows, but the core chime script remains
+#     here as a fallback/testing helper.
 # =============================================================================
 
 script:
