@@ -1,10 +1,9 @@
 # =============================================================================
 # PACKAGE: ring.yaml
-# PURPOSE: Ring ding → flash Shelly shelves + play chime on Kitchen & Patio Sonos
-# FIX: Launch Sonos chime asynchronously before Shelly flash for quicker audio start.
+# PURPOSE: Ring ding → play chime on Kitchen & Patio Sonos
+# FIX: Focus the migration on reliable audio playback; shelves flash returns later.
 #
 # DEPENDS ON:
-#   - Pyscript doorbell module (pyscript/apps/doorbell.py)
 #   - Sonos players: media_player.kitchen, media_player.patio
 #   - File at /config/www/dingdong.mp3 (served via media-source://media_source/local/dingdong.mp3)
 #
@@ -63,7 +62,7 @@ script:
           } | tojson | from_json }}
 
 automation:
-  - alias: Ring → Ding-Dong + Shelves Flash (legacy YAML)
+  - alias: Ring → Ding-Dong (legacy YAML)
     initial_state: 'off'
     mode: single
     max_exceeded: silent
@@ -92,7 +91,5 @@ automation:
 
     action:
       - service: pyscript.sonos_doorbell_chime_py
-      - delay: "00:00:00.10"     # tiny stagger so shelves trail the audio start
-      - service: pyscript.shelves_doorbell_flash_py
       - delay: "00:00:04"        # absorb duplicates
 # Rollback note: Restored prior ring chime flow while investigating regressions.
