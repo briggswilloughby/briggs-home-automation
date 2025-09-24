@@ -10,7 +10,7 @@ Consistent names make YAML readable and grep-able across packages, scripts, and 
 ## Decision
 Use lowercase snake_case with clear prefixes:
 - Entities: media_player.kitchen, media_player.family_room
-- Scripts: script.tv_in_kitchen, script.shelves_doorbell_flash
+- Scripts/services: script.tv_in_kitchen, pyscript.shelves_doorbell_flash_py
 - Helpers: input_boolean.*, input_number.*
 - Files: one feature per file under home-assistant/packages/ (e.g., sonos.yaml, ing.yaml)
 
