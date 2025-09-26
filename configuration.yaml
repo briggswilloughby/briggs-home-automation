@@ -4,6 +4,12 @@ homeassistant:
 
 default_config:
 
+pyscript:
+  allow_all_imports: true
+  apps:
+    - apps
+  auto_reload: true
+
 logger:
   default: warning
 
