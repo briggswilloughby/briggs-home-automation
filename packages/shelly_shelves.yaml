@@ -381,8 +381,8 @@ script:
                   - "{{ g | int }}"
                   - "{{ b | int }}"
                   - "{{ w | int }}"
-                brightness_pct: {{ bp }}
-                transition: {{ tr }}
+                brightness_pct: "{{ bp }}"
+                transition: "{{ tr }}"
 
 #########################
 # 4) OPTIONAL AUTOMATIONS
