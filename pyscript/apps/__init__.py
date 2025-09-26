@@ -1,3 +1,5 @@
 """Pyscript application modules for Home Assistant automations."""
 
-__all__ = []
+from . import doorbell
+
+__all__ = ["doorbell"]
