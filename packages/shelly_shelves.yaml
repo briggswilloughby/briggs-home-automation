@@ -377,10 +377,10 @@ script:
                 entity_id: "{{ repeat.item }}"
               data:
                 rgbw_color:
-                  - {{ r | int }}
-                  - {{ g | int }}
-                  - {{ b | int }}
-                  - {{ w | int }}
+                  - "{{ r | int }}"
+                  - "{{ g | int }}"
+                  - "{{ b | int }}"
+                  - "{{ w | int }}"
                 brightness_pct: {{ bp }}
                 transition: {{ tr }}
 
