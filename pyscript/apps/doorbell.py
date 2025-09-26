@@ -4,7 +4,6 @@ This module exposes standalone helpers for the Sonos chime and Shelly shelf
 flash sequences, plus a combined service and Ring event trigger that run both
 paths in parallel.  It mirrors the former YAML packages while embracing Python
 concepts such as async orchestration, structured logging, and reusable helpers.
-"""
 
 from __future__ import annotations
 
@@ -41,6 +40,7 @@ VALID_BUTTON_STATES = {"ringing", "pressed", "start"}
 
 
 def _coerce_mapping(value: Any) -> dict[str, Any]:
+
     """Return a dict regardless of whether HA supplied a dict or JSON string."""
 
     if isinstance(value, Mapping):
@@ -243,7 +243,6 @@ async def _run_doorbell_flow(
         if guard_seconds > 0:
             await task.sleep(guard_seconds)
 
-
 @service
 async def sonos_doorbell_chime_py(
     players: Any = None,
@@ -254,7 +253,6 @@ async def sonos_doorbell_chime_py(
     """Expose the chime helper as a callable Pyscript service."""
 
     await _run_sonos_doorbell_chime(players, chime_url, chime_vol, chime_len)
-
 
 @service
 async def shelves_doorbell_flash_py(

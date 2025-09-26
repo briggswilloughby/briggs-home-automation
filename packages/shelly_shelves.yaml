@@ -278,55 +278,8 @@ script:
             - service: homeassistant.update_entity
               target: { entity_id: "{{ repeat.item }}" }
 
-  # ---- Doorbell Flash (scene snapshot → red x3 → restore) ----
-  shelves_doorbell_flash:
-    alias: Shelves - Doorbell Flash
-    mode: restart
-    sequence:
-      - condition: template
-        value_template: "{{ not is_state('script.seahawks_touchdown','on') }}"
-
-      # Snapshot into a temporary scene
-      - service: scene.create
-        data:
-          scene_id: shelves_before_doorbell
-          snapshot_entities:
-            - light.shelf_1
-            - light.shelf_2
-            - light.shelf_3
-            - light.shelf_4
-
-      # Flash red x3 @50%
-      - variables:
-          repeats: 3
-          on_time_ms: 250
-      - repeat:
-          count: "{{ repeats }}"
-          sequence:
-            - service: light.turn_on
-              target: { entity_id: light.shelves_all }
-              data: { rgbw_color: [255, 0, 0, 0], brightness_pct: 50, transition: 0 }
-            - delay: { milliseconds: "{{ on_time_ms }}" }
-            - service: light.turn_off
-              target: { entity_id: light.shelves_all }
-            - delay: { milliseconds: "{{ on_time_ms }}" }
-
-      # Settle, then restore the scene
-      - delay: { milliseconds: 300 }
-      - service: scene.turn_on
-        target: { entity_id: scene.shelves_before_doorbell }
-
-      # Light nudge to ensure state is reported back
-      - delay: { milliseconds: 250 }
-      - repeat:
-          for_each:
-            - light.shelf_1
-            - light.shelf_2
-            - light.shelf_3
-            - light.shelf_4
-          sequence:
-            - service: homeassistant.update_entity
-              target: { entity_id: "{{ repeat.item }}" }
+  # ---- Doorbell Flash ----
+  # Retired in favor of pyscript.shelves_doorbell_flash_py.
 
   # ---- (Optional) Shelf 2 – Probe Restore (single-light test) ----
   shelf2_probe_restore:
