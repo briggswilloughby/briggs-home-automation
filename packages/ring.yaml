@@ -1,7 +1,7 @@
 # =============================================================================
 # PACKAGE: ring.yaml
-# PURPOSE: Ring ding → play chime on Kitchen & Patio Sonos
-# FIX: Focus the migration on reliable audio playback; shelves flash returns later.
+# PURPOSE: Ring ding → play Sonos chime and flash Shelly shelves via Pyscript
+# FIX: Python module owns the doorbell flow; YAML offers manual entry points.
 #
 # DEPENDS ON:
 #   - Sonos players: media_player.kitchen, media_player.patio
@@ -61,6 +61,97 @@ script:
             'chime_len': chime_len
           } | tojson | from_json }}
 
+  doorbell_ring_combo:
+    alias: Doorbell - Chime + Shelves Flash (Pyscript)
+    mode: single
+    fields:
+      players:
+        description: Sonos speakers that should play the chime
+        example: "media_player.kitchen"
+        default:
+          - media_player.kitchen
+          - media_player.patio
+        selector:
+          entity:
+            domain: media_player
+            multiple: true
+      chime_url:
+        description: Media URL or media-source path for the chime clip
+        example: "http://192.168.68.86:8123/local/dingdong.mp3"
+        default: "http://192.168.68.86:8123/local/dingdong.mp3"
+        selector:
+          text:
+      chime_vol:
+        description: Temporary volume level (0.0 - 1.0) while the chime plays
+        example: 0.4
+        default: 0.4
+        selector:
+          number:
+            min: 0
+            max: 1
+            step: 0.01
+      chime_len:
+        description: How long to wait before restoring the Sonos snapshot
+        example: "00:00:03"
+        default: "00:00:03"
+        selector:
+          text:
+      flash_repeats:
+        description: Number of red flashes to perform
+        example: 3
+        default: 3
+        selector:
+          number:
+            min: 0
+            max: 10
+            step: 1
+      flash_on_time_ms:
+        description: Milliseconds each flash stays on/off
+        example: 250
+        default: 250
+        selector:
+          number:
+            min: 50
+            max: 2000
+            step: 50
+      flash_brightness_pct:
+        description: Brightness percentage for the flash
+        example: 50
+        default: 50
+        selector:
+          number:
+            min: 1
+            max: 100
+            step: 1
+      flash_enabled:
+        description: Toggle the shelves flash while keeping the chime
+        default: true
+        selector:
+          boolean:
+      guard_seconds:
+        description: Cooldown to absorb duplicate presses
+        example: 4
+        default: 4
+        selector:
+          number:
+            min: 0
+            max: 30
+            step: 0.5
+    sequence:
+      - service: pyscript.doorbell_ring_py
+        data: >-
+          {{ {
+            'players': players,
+            'chime_url': chime_url,
+            'chime_vol': chime_vol,
+            'chime_len': chime_len,
+            'flash_repeats': flash_repeats,
+            'flash_on_time_ms': flash_on_time_ms,
+            'flash_brightness_pct': flash_brightness_pct,
+            'flash_enabled': flash_enabled,
+            'guard_seconds': guard_seconds
+          } | tojson | from_json }}
+
 automation:
   - alias: Ring → Ding-Dong (legacy YAML)
     initial_state: 'off'
@@ -92,4 +183,4 @@ automation:
     action:
       - service: pyscript.sonos_doorbell_chime_py
       - delay: "00:00:04"        # absorb duplicates
-# Rollback note: Restored prior ring chime flow while investigating regressions.
+  # Legacy guard: keep disabled while the Pyscript handler owns the event flow.

@@ -1,9 +1,9 @@
-"""Doorbell chime automation implemented with Pyscript.
+"""Doorbell chime + shelves flash automation implemented with Pyscript.
 
-This pared-down module focuses solely on playing the Sonos chime. The shelves
-flash sequence will return in a follow-up iteration once the audio path is
-stable.
-"""
+This module exposes standalone helpers for the Sonos chime and Shelly shelf
+flash sequences, plus a combined service and Ring event trigger that run both
+paths in parallel.  It mirrors the former YAML packages while embracing Python
+concepts such as async orchestration, structured logging, and reusable helpers.
 
 from __future__ import annotations
 
@@ -18,8 +18,21 @@ DEFAULT_CHIME_VOL = 0.4
 DEFAULT_CHIME_DURATION = timedelta(seconds=3)
 DEFAULT_PLAYERS = ("media_player.kitchen", "media_player.patio")
 
+SHELF_LIGHTS = (
+    "light.shelf_1",
+    "light.shelf_2",
+    "light.shelf_3",
+    "light.shelf_4",
+)
+SHELF_GROUP = "light.shelves_all"
+SHELF_SCENE_ID = "shelves_before_doorbell"
+SHELF_SCENE_ENTITY = f"scene.{SHELF_SCENE_ID}"
+TOUCHDOWN_SCRIPT = "script.seahawks_touchdown"
+
 EVENT_ENTITY = "event.front_door_ding"
 TASK_NAME = "doorbell_ringing_flow"
+DUPLICATE_GUARD_SECONDS = 4.0
+
 MOTION_CLEAR = {None, False, "false", "False"}
 VALID_KINDS = {None, "ding", "doorbell", "on_demand_ding", "remote_ding"}
 VALID_STATES = {None, "ringing", "starting", "doorbell", "button", "on_demand"}
@@ -27,7 +40,8 @@ VALID_BUTTON_STATES = {"ringing", "pressed", "start"}
 
 
 def _coerce_mapping(value: Any) -> dict[str, Any]:
-    """Return a dict whether Home Assistant hands us a dict or JSON string."""
+
+    """Return a dict regardless of whether HA supplied a dict or JSON string."""
 
     if isinstance(value, Mapping):
         return dict(value)
@@ -165,6 +179,70 @@ async def _run_sonos_doorbell_chime(
     await service.call("sonos", "restore", entity_id=player_list, with_group=True)
 
 
+async def _run_shelves_doorbell_flash(
+    repeats: int = 3,
+    on_time_ms: int = 250,
+    brightness_pct: int = 50,
+) -> None:
+    """Flash the Shelly shelves red, then restore their prior state."""
+
+    if state.get(TOUCHDOWN_SCRIPT) == "on":
+        log.info("Shelves flash skipped because %s is running", TOUCHDOWN_SCRIPT)
+        return
+
+    await service.call(
+        "scene",
+        "create",
+        scene_id=SHELF_SCENE_ID,
+        snapshot_entities=list(SHELF_LIGHTS),
+    )
+
+    on_time = max(on_time_ms, 0) / 1000.0
+    flashes = max(int(repeats), 0)
+
+    for _ in range(flashes):
+        await service.call(
+            "light",
+            "turn_on",
+            entity_id=SHELF_GROUP,
+            rgbw_color=[255, 0, 0, 0],
+            brightness_pct=brightness_pct,
+            transition=0,
+        )
+        await task.sleep(on_time)
+        await service.call("light", "turn_off", entity_id=SHELF_GROUP)
+        await task.sleep(on_time)
+
+    await task.sleep(0.3)
+    await service.call("scene", "turn_on", entity_id=SHELF_SCENE_ENTITY)
+
+    await task.sleep(0.25)
+    for entity_id in SHELF_LIGHTS:
+        await service.call("homeassistant", "update_entity", entity_id=entity_id)
+
+
+async def _run_doorbell_flow(
+    *,
+    guard_seconds: float = DUPLICATE_GUARD_SECONDS,
+    flash_enabled: bool = True,
+    chime_kwargs: Mapping[str, Any] | None = None,
+    flash_kwargs: Mapping[str, Any] | None = None,
+) -> None:
+    """Launch chime and flash concurrently, then enforce the duplicate guard."""
+
+    chime_task = task.create(_run_sonos_doorbell_chime(**(chime_kwargs or {})))
+    tasks: list[Any] = [chime_task]
+
+    if flash_enabled:
+        flash_task = task.create(_run_shelves_doorbell_flash(**(flash_kwargs or {})))
+        tasks.append(flash_task)
+
+    try:
+        await task.wait_all(*tasks)
+    finally:
+        if guard_seconds > 0:
+            await task.sleep(guard_seconds)
+
 @service
 async def sonos_doorbell_chime_py(
     players: Any = None,
@@ -176,11 +254,52 @@ async def sonos_doorbell_chime_py(
 
     await _run_sonos_doorbell_chime(players, chime_url, chime_vol, chime_len)
 
+@service
+async def shelves_doorbell_flash_py(
+    repeats: int = 3,
+    on_time_ms: int = 250,
+    brightness_pct: int = 50,
+) -> None:
+    """Expose the shelves flash helper as a callable Pyscript service."""
+
+    await _run_shelves_doorbell_flash(repeats, on_time_ms, brightness_pct)
+
+
+@service
+async def doorbell_ring_py(
+    players: Any = None,
+    chime_url: str = DEFAULT_CHIME_URL,
+    chime_vol: float = DEFAULT_CHIME_VOL,
+    chime_len: Any = "00:00:03",
+    flash_repeats: int = 3,
+    flash_on_time_ms: int = 250,
+    flash_brightness_pct: int = 50,
+    flash_enabled: bool = True,
+    guard_seconds: float = DUPLICATE_GUARD_SECONDS,
+) -> None:
+    """Convenience service that runs both chime and flash concurrently."""
+
+    await _run_doorbell_flow(
+        guard_seconds=guard_seconds,
+        flash_enabled=flash_enabled,
+        chime_kwargs={
+            "players": players,
+            "chime_url": chime_url,
+            "chime_vol": chime_vol,
+            "chime_len": chime_len,
+        },
+        flash_kwargs={
+            "repeats": flash_repeats,
+            "on_time_ms": flash_on_time_ms,
+            "brightness_pct": flash_brightness_pct,
+        },
+    )
+
 
 @state_trigger(f"{EVENT_ENTITY} != ''", state_check_now=False)
 @task_unique(TASK_NAME)
 async def ring_doorbell_handler(value: str | None = None, **kwargs: Any) -> None:
-    """Filter Ring ding events and play the Sonos chime once per press."""
+    """Replicate the Ring YAML automation with Python filtering and throttling."""
 
     attrs = state.getattr(EVENT_ENTITY) or {}
     event_type = attrs.get("event_type")
@@ -202,5 +321,4 @@ async def ring_doorbell_handler(value: str | None = None, **kwargs: Any) -> None
 
     log.info("Ring ding detected (kind=%s state=%s)", ring_kind, ring_state)
 
-    await _run_sonos_doorbell_chime()
-    await task.sleep(4.0)
+    await _run_doorbell_flow()
