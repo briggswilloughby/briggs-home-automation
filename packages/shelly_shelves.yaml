@@ -408,7 +408,8 @@ script:
                 {% set ns.result = ns.result + [(item | string)] %}
               {% endif %}
             {% endfor %}
-            {{ ns.result | list }}
+            {{ ns.result | list | to_json }}
+          targets: "{{ targets_json | from_json }}"
           r: "{{ rgbw[0] | int }}"
           g: "{{ rgbw[1] | int }}"
           b: "{{ rgbw[2] | int }}"
@@ -422,9 +423,9 @@ script:
               target:
                 entity_id: "{{ repeat.item }}"
               data:
-                rgbw_color: [ "{{ r }}", "{{ g }}", "{{ b }}", "{{ w }}" ]
-                brightness_pct: "{{ bp }}"
-                transition: "{{ tr }}"
+                rgbw_color: [ {{ r }}, {{ g }}, {{ b }}, {{ w }} ]
+                brightness_pct: {{ bp }}
+                transition: {{ tr }}
 
 #########################
 # 4) OPTIONAL AUTOMATIONS
