@@ -325,11 +325,11 @@ script:
     sequence:
       - variables:
           grp: "{{ group | default('light.shelves_all', true) }}"
-          expanded_json: "{{ expand(grp) | map(attribute='entity_id') | list | to_json }}"
+          expanded_json: "{{ expand(grp) | map(attribute='entity_id') | list | tojson }}"
           expanded: "{{ expanded_json | from_json(default=[]) }}"
-          targets_json: "{{ (expanded if expanded else [grp]) | to_json }}"
+          targets_json: "{{ (expanded if expanded else [grp]) | tojson }}"
           targets: "{{ targets_json | from_json(default=[]) }}"
-          rgbw_json: "{{ (rgbw | default([0, 0, 0, 0], true)) | to_json }}"
+          rgbw_json: "{{ (rgbw | default([0, 0, 0, 0], true)) | tojson }}"
           rgbw_list: "{{ rgbw_json | from_json(default=[0, 0, 0, 0]) }}"
           r: "{{ rgbw_list[0] | int(0) }}"
           g: "{{ rgbw_list[1] | int(0) }}"
