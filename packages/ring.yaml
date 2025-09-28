@@ -22,12 +22,12 @@ script:
     variables:
       payload: >-
         {{
-          {
-            'players': (players | default(['media_player.kitchen', 'media_player.patio'], true)),
-            'chime_url': (chime_url | default('http://192.168.68.86:8123/local/dingdong.mp3', true)),
-            'chime_vol': (chime_vol | default(0.4, true)),
-            'chime_len': (chime_len | default('00:00:03', true))
-          } | tojson | from_json
+          dict(
+            players=players | default(['media_player.kitchen', 'media_player.patio'], true),
+            chime_url=chime_url | default('http://192.168.68.86:8123/local/dingdong.mp3', true),
+            chime_vol=chime_vol | default(0.4, true),
+            chime_len=chime_len | default('00:00:03', true)
+          ) | tojson | from_json
         }}
     fields:
       players:
