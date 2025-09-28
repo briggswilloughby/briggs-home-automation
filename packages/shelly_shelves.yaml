@@ -326,9 +326,7 @@ script:
       - variables:
           grp: "{{ group | default('light.shelves_all', true) }}"
           expanded_json: "{{ expand(grp) | map(attribute='entity_id') | list | tojson }}"
-          expanded: "{{ expanded_json | from_json(default=[]) }}"
-          targets_json: "{{ (expanded if expanded else [grp]) | tojson }}"
-          targets: "{{ targets_json | from_json(default=[]) }}"
+          targets_list: "{{ (expanded_json | from_json(default=[])) or [grp] }}"
           rgbw_json: "{{ (rgbw | default([0, 0, 0, 0], true)) | tojson }}"
           rgbw_list: "{{ rgbw_json | from_json(default=[0, 0, 0, 0]) }}"
           r: "{{ rgbw_list[0] | int(0) }}"
@@ -338,7 +336,7 @@ script:
           bp: "{{ bright | default(100, true) | int }}"
           tr: "{{ trans | default(0, true) | float(0) }}"
       - repeat:
-          for_each: "{{ targets }}"
+          for_each: "{{ targets_list }}"
           sequence:
             - service: light.turn_on
               target:
