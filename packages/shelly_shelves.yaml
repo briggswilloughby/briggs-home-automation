@@ -242,7 +242,7 @@ script:
       # Flash alt blue/green @100%
       - variables:
           cycles: 10
-          on_time_ms: 500
+          on_time_ms: 250
       - repeat:
           count: "{{ cycles }}"
           sequence:
@@ -262,7 +262,7 @@ script:
             - delay: { milliseconds: "{{ on_time_ms }}" }
 
       # Let Shellys settle, then restore the scene
-      - delay: { milliseconds: 300 }
+      - delay: { milliseconds: 150 }
       - service: scene.turn_on
         target: { entity_id: scene.shelves_before_touchdown }
 
