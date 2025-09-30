@@ -1,2 +1,2 @@
-apps.doorbell:
-  module: "apps.doorbell"
+doorbell:
+  module: doorbell
