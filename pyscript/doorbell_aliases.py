@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pyscript import log, service
+from pyscript import service
 
 LEGACY_TARGETS = {
     "sonos_doorbell_chime": "sonos_doorbell_chime_py",
