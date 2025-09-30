@@ -1,2 +1,4 @@
 doorbell:
   module: doorbell
+hello_app:
+  module: hello_app

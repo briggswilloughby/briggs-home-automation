@@ -13,3 +13,18 @@ tts/
 media/*
 www/*
 automations.yaml
+# Home Assistant runtime
+home-assistant_v2.db
+home-assistant.log
+.storage/
+.cloud/
+deps/
+__pycache__/
+*.pyc
+
+# Pyscript backups / scratch
+pyscript/_bak/
+pyscript/apps.yaml.local-*.bak
+
+# HACS / third-party custom components (managed outside repo)
+custom_components/

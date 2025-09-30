@@ -6,12 +6,13 @@ default_config:
 
 pyscript:
   allow_all_imports: true
-  apps:
-    - apps
-  auto_reload: true
+  apps: !include pyscript/apps.yaml
 
 logger:
   default: warning
+  logs:
+    custom_components.pyscript: debug
+    custom_components.pyscript.file:  debug
 
 tts:
   - platform: google_translate
