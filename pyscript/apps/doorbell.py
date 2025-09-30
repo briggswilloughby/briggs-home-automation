@@ -12,7 +12,7 @@ import json
 from datetime import timedelta
 from typing import Any, Iterable, Mapping
 
-from pyscript import log, service, state, state_trigger, task, task_unique
+from pyscript import service, state, state_trigger, task, task_unique
 
 DEFAULT_CHIME_URL = "http://192.168.68.86:8123/local/dingdong.mp3"
 DEFAULT_CHIME_VOL = 0.4
