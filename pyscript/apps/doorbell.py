@@ -12,8 +12,6 @@ import json
 from datetime import timedelta
 from typing import Any, Iterable, Mapping
 
-from pyscript import service, state, state_trigger, task, task_unique
-
 # Note: Pyscript injects a global `log` object at runtime; no import needed.
 
 DEFAULT_CHIME_URL = "http://192.168.68.86:8123/local/dingdong.mp3"
