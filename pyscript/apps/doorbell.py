@@ -12,7 +12,8 @@ import json
 from datetime import timedelta
 from typing import Any, Iterable, Mapping
 
-# Note: Pyscript injects a global `log` object at runtime; no import needed.
+# Note: Pyscript injects globals such as `log`, `service`, `state`,
+# `state_trigger`, `task`, and `task_unique` at runtime; no import needed.
 
 DEFAULT_CHIME_URL = "http://192.168.68.86:8123/local/dingdong.mp3"
 DEFAULT_CHIME_VOL = 0.4
