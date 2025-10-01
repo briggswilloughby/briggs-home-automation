@@ -63,11 +63,7 @@ script:
     sequence:
       - service: pyscript.shelves_doorbell_flash_py
         data:
-          targets:
-            - light.shelf_1
-            - light.shelf_2
-            - light.shelf_3
-            - light.shelf_4
+          targets: ['light.shelf_1', 'light.shelf_2', 'light.shelf_3', 'light.shelf_4']
       # Optionally:
       # - service: script.sonos_announce
       #   data:
