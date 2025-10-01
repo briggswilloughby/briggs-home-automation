@@ -45,10 +45,21 @@ async def shelves_flash(
     available = []
     missing = []
     for entity_id in ids:
-        if state.get(entity_id) is None:
+        try:
+            entity_state = state.get(entity_id)
+        except (NameError, KeyError):
+            entity_state = None
+        except Exception as err:  # pragma: no cover - defensive logging
+            log.warning(
+                "shelves_flash: error retrieving state for %s: %s", entity_id, err
+            )
+            entity_state = None
+
+        if entity_state is None:
             missing.append(entity_id)
-        else:
-            available.append(entity_id)
+            continue
+
+        available.append(entity_id)
 
     if missing:
         log.warning("shelves_flash: skipping unavailable targets: %s", ", ".join(missing))
