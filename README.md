@@ -4,6 +4,9 @@
 [![Context](https://img.shields.io/badge/ASSISTANT__CONTEXT.md-brightgreen)](https://raw.githubusercontent.com/briggswilloughby/briggs-home-automation/main/docs/ASSISTANT_CONTEXT.md)
 [![Pitfalls](https://img.shields.io/badge/KNOWN__PITFALLS.md-orange)](https://raw.githubusercontent.com/briggswilloughby/briggs-home-automation/main/docs/KNOWN-PITFALLS.md)
 [![Changelog](https://img.shields.io/badge/CHANGELOG.md-yellow)](https://raw.githubusercontent.com/briggswilloughby/briggs-home-automation/main/CHANGELOG.md)
+[![Pyscript Anchor](https://img.shields.io/badge/AGENT__ANCHOR.md-purple)](https://raw.githubusercontent.com/briggswilloughby/briggs-home-automation/main/docs/AGENT_ANCHOR.md)
+[![Pyscript Playbook](https://img.shields.io/badge/HA__PYSCRIPT__PLAYBOOK.md-lightgrey)](https://raw.githubusercontent.com/briggswilloughby/briggs-home-automation/main/docs/HA_PYSCRIPT_PLAYBOOK.md)
+[![Troubleshooting](https://img.shields.io/badge/TROUBLESHOOTING.md-red)](https://raw.githubusercontent.com/briggswilloughby/briggs-home-automation/main/docs/TROUBLESHOOTING.md)
 
 This repository contains my Home Assistant configuration and related automation scripts. It is the single source of truth for my smart home setup, including Sonos, Shelly RGBW2, Ring, Lutron, Google Assistant, and custom YAML automations.
 
@@ -50,7 +53,14 @@ This repository contains my Home Assistant configuration and related automation 
 - [KICKOFF.md](https://raw.githubusercontent.com/briggswilloughby/briggs-home-automation/main/KICKOFF.md)
 - [ASSISTANT_CONTEXT.md](https://raw.githubusercontent.com/briggswilloughby/briggs-home-automation/main/docs/ASSISTANT_CONTEXT.md)
 - [KNOWN-PITFALLS.md](https://raw.githubusercontent.com/briggswilloughby/briggs-home-automation/main/docs/KNOWN-PITFALLS.md)
+- [Pyscript Apps Anchor](https://raw.githubusercontent.com/briggswilloughby/briggs-home-automation/main/docs/AGENT_ANCHOR.md)
+- [Pyscript Ops Playbook](https://raw.githubusercontent.com/briggswilloughby/briggs-home-automation/main/docs/HA_PYSCRIPT_PLAYBOOK.md)
+- [Pyscript Troubleshooting](https://raw.githubusercontent.com/briggswilloughby/briggs-home-automation/main/docs/TROUBLESHOOTING.md)
 
 ### Home Assistant Packages
 
 - [sonos.yaml](https://raw.githubusercontent.com/briggswilloughby/briggs-home-automation/main/home-assistant/packages/sonos.yaml)
+
+### Tooling
+
+- [`scripts/verify_pyscript.sh`](scripts/verify_pyscript.sh): run inside your Docker host to validate the apps-mode mapping, configuration include, import guardrail, and recent log output before deploying.
