@@ -42,11 +42,26 @@ async def shelves_flash(
     # ensure only one flasher runs at a time
     await task.unique("shelves_flash", kill_me=True)
 
+    available = []
+    missing = []
+    for entity_id in ids:
+        if state.get(entity_id) is None:
+            missing.append(entity_id)
+        else:
+            available.append(entity_id)
+
+    if missing:
+        log.warning("shelves_flash: skipping unavailable targets: %s", ", ".join(missing))
+
+    if not available:
+        log.error("shelves_flash: no usable targets after filtering unavailable entities")
+        raise ValueError("shelves_flash: no usable targets")
+
     for i in range(flashes):
         # turn on (brightness optional; remove if your lights are on/off only)
-        service.call("light", "turn_on", entity_id=ids, brightness=brightness)
+        service.call("light", "turn_on", entity_id=available, brightness=brightness)
         await task.sleep(on_s)
-        service.call("light", "turn_off", entity_id=ids)
+        service.call("light", "turn_off", entity_id=available)
         if i < flashes - 1:
             await task.sleep(off_s)
 
