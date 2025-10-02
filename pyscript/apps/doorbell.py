@@ -5,6 +5,19 @@
 #
 # NOTE: Do not import helpers; Pyscript injects @service, log, task, service, etc.
 
+import asyncio
+from time import monotonic
+
+_DEFAULT_SHELF_TARGETS = [
+    "light.shelf_1",
+    "light.shelf_2",
+    "light.shelf_3",
+    "light.shelf_4",
+]
+
+_doorbell_guard_lock = asyncio.Lock()
+_doorbell_last_run = 0.0
+
 def _normalize_targets(targets):
     if not targets:
         return []
@@ -14,6 +27,141 @@ def _normalize_targets(targets):
     if isinstance(targets, (list, tuple, set)):
         return [str(e) for e in targets]
     return [str(targets)]
+
+
+def _parse_duration(value):
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return max(0.0, float(value))
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        parts = stripped.split(":")
+        try:
+            if len(parts) == 3:
+                hours, minutes, seconds = parts
+            elif len(parts) == 2:
+                hours = 0
+                minutes, seconds = parts
+            else:
+                return max(0.0, float(stripped))
+            total = (int(hours) * 3600) + (int(minutes) * 60) + float(seconds)
+            return max(0.0, float(total))
+        except (TypeError, ValueError):
+            try:
+                return max(0.0, float(stripped))
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _coerce_bool(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "on", "yes", "y"}
+    return bool(value)
+
+
+def _pct_to_brightness(pct):
+    try:
+        pct_value = float(pct)
+    except (TypeError, ValueError):
+        pct_value = 0.0
+    pct_value = max(0.0, min(100.0, pct_value))
+    if pct_value <= 0.0:
+        return 0
+    return int(round(255 * (pct_value / 100.0))) or 1
+
+
+def _to_float(value, default=0.0):
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except (TypeError, ValueError):
+            duration = _parse_duration(value)
+            if duration is not None:
+                return duration
+    return default
+
+
+@service
+async def doorbell_ring_py(
+    players=None,
+    chime_url=None,
+    chime_vol=0.4,
+    chime_len=None,
+    flash_repeats=3,
+    flash_on_time_ms=250,
+    flash_brightness_pct=50,
+    flash_enabled=True,
+    guard_seconds=4,
+):
+    guard = max(0.0, _to_float(guard_seconds, default=0.0))
+    async with _doorbell_guard_lock:
+        global _doorbell_last_run
+        now = monotonic()
+        if guard > 0 and (now - _doorbell_last_run) < guard:
+            remaining = guard - (now - _doorbell_last_run)
+            log.info(
+                "doorbell_ring_py: guard active (%.2fs remaining); skipping", max(0.0, remaining)
+            )
+            return
+        _doorbell_last_run = now
+
+    player_ids = _normalize_targets(players)
+    wait_s = _parse_duration(chime_len)
+    sonos_tasks = []
+    for player in player_ids:
+        sonos_tasks.append(
+            sonos_doorbell_chime_py(
+                player=player,
+                media_url=chime_url,
+                volume=chime_vol,
+                wait_s=wait_s,
+            )
+        )
+
+    flash_tasks = []
+    if _coerce_bool(flash_enabled):
+        flashes = 0
+        try:
+            flashes = int(float(flash_repeats))
+        except (TypeError, ValueError):
+            flashes = 0
+        if flashes > 0:
+            brightness = _pct_to_brightness(flash_brightness_pct)
+            if brightness > 0:
+                on_ms = int(max(50, float(flash_on_time_ms or 0)))
+                flash_tasks.append(
+                    shelves_flash(
+                        targets=_DEFAULT_SHELF_TARGETS,
+                        flashes=flashes,
+                        brightness=brightness,
+                        on_ms=on_ms,
+                        off_ms=on_ms,
+                    )
+                )
+
+    pending = []
+    if sonos_tasks:
+        pending.extend(sonos_tasks)
+    if flash_tasks:
+        pending.extend(flash_tasks)
+
+    if not pending:
+        log.warning("doorbell_ring_py: nothing to do (no players or flash targets)")
+        return
+
+    await asyncio.gather(*pending)
 
 @service
 async def shelves_doorbell_flash_py(**kw):
@@ -82,6 +230,18 @@ async def sonos_doorbell_chime_py(**kw):
     await sonos_ding(**kw)
 
 @service
-async def sonos_ding(player: str | None = None, volume: float = 0.15):
+async def sonos_ding(
+    player: str | None = None,
+    media_url: str | None = None,
+    volume: float = 0.15,
+    wait_s: float | None = None,
+):
     # stub: swap in real chime logic when ready
-    log.info("Stub sonos_ding: player=%s volume=%s", player, volume)
+    wait_value = _parse_duration(wait_s)
+    log.info(
+        "Stub sonos_ding: player=%s volume=%s media_url=%s wait_s=%s",
+        player,
+        volume,
+        media_url,
+        wait_value,
+    )
