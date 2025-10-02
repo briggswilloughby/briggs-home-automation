@@ -5,6 +5,8 @@
 #
 # NOTE: Do not import helpers; Pyscript injects @service, log, task, service, etc.
 
+import time
+
 def _normalize_targets(targets):
     if not targets:
         return []
@@ -141,6 +143,7 @@ async def shelves_flash(
     brightness: int = 230,
     on_ms: int = 200,
     off_ms: int = 200,
+    restore: bool = True,
     **kwargs,
 ):
     raw_ids = []
@@ -230,6 +233,20 @@ async def shelves_flash(
         log.error("shelves_flash: no usable targets after filtering unavailable entities")
         raise ValueError("shelves_flash: no usable targets")
 
+    restore_scene_entity = None
+    if restore:
+        scene_slug = f"shelves_flash_restore_{int(time.time() * 1000)}"
+        try:
+            service.call(
+                "scene",
+                "create",
+                scene_id=scene_slug,
+                snapshot_entities=available,
+            )
+            restore_scene_entity = f"scene.{scene_slug}"
+        except Exception as err:  # pragma: no cover - defensive logging
+            log.error("shelves_flash: failed to snapshot state for restore: %s", err)
+
     for i in range(flashes):
         if color_capable_lights:
             service.call(
@@ -264,6 +281,16 @@ async def shelves_flash(
             service.call("switch", "turn_off", entity_id=switches)
         if i < flashes - 1:
             await task.sleep(off_s)
+
+    if restore and restore_scene_entity:
+        try:
+            service.call("scene", "turn_on", entity_id=restore_scene_entity)
+        except Exception as err:  # pragma: no cover - defensive logging
+            log.error(
+                "shelves_flash: failed to restore snapshot scene %s: %s",
+                restore_scene_entity,
+                err,
+            )
 
 @service
 async def sonos_doorbell_chime_py(**kw):
