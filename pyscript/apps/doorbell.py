@@ -189,8 +189,39 @@ async def shelves_flash(
             "shelves_flash: ignoring unsupported domains: %s", ", ".join(unsupported)
         )
 
+    color_capable_lights = []
+    brightness_only_lights = []
+    for entity_id in lights_with_brightness:
+        try:
+            entity_attributes = state.getattr(entity_id) or {}
+        except Exception as err:  # pragma: no cover - defensive logging
+            log.warning(
+                "shelves_flash: error retrieving attributes for %s: %s", entity_id, err
+            )
+            entity_attributes = {}
+
+        supported_color_modes = entity_attributes.get("supported_color_modes")
+        if isinstance(supported_color_modes, str):
+            supported_color_modes = [supported_color_modes]
+
+        supports_color = False
+        if isinstance(supported_color_modes, (list, tuple, set)):
+            for mode in supported_color_modes:
+                if not mode:
+                    continue
+                mode_str = str(mode).lower()
+                if mode_str in {"hs", "rgb", "rgbw", "rgbww", "xy"} or "rgb" in mode_str:
+                    supports_color = True
+                    break
+
+        if supports_color:
+            color_capable_lights.append(entity_id)
+        else:
+            brightness_only_lights.append(entity_id)
+
     available = (
-        lights_with_brightness
+        color_capable_lights
+        + brightness_only_lights
         + lights_without_brightness
         + switches
     )
@@ -200,11 +231,19 @@ async def shelves_flash(
         raise ValueError("shelves_flash: no usable targets")
 
     for i in range(flashes):
-        if lights_with_brightness:
+        if color_capable_lights:
             service.call(
                 "light",
                 "turn_on",
-                entity_id=lights_with_brightness,
+                entity_id=color_capable_lights,
+                brightness=brightness,
+                rgb_color=[255, 0, 0],
+            )
+        if brightness_only_lights:
+            service.call(
+                "light",
+                "turn_on",
+                entity_id=brightness_only_lights,
                 brightness=brightness,
             )
         if lights_without_brightness:
@@ -214,7 +253,11 @@ async def shelves_flash(
 
         await task.sleep(on_s)
 
-        all_lights = lights_with_brightness + lights_without_brightness
+        all_lights = (
+            color_capable_lights
+            + brightness_only_lights
+            + lights_without_brightness
+        )
         if all_lights:
             service.call("light", "turn_off", entity_id=all_lights)
         if switches:
