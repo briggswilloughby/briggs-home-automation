@@ -15,6 +15,118 @@ def _normalize_targets(targets):
         return [str(e) for e in targets]
     return [str(targets)]
 
+
+def _get_entity_details(entity_id):
+    try:
+        details = state.get(entity_id, attribute="all")
+    except (NameError, KeyError):
+        details = None
+    except Exception as err:  # pragma: no cover - defensive logging
+        log.warning("shelves_flash: error retrieving state for %s: %s", entity_id, err)
+        details = None
+
+    if not details:
+        try:
+            current_state = state.get(entity_id)
+        except (NameError, KeyError):
+            current_state = None
+        except Exception as err:  # pragma: no cover - defensive logging
+            log.warning(
+                "shelves_flash: error retrieving state for %s: %s", entity_id, err
+            )
+            current_state = None
+        return current_state, {}
+
+    if isinstance(details, dict):
+        return details.get("state"), details.get("attributes", {}) or {}
+
+    return details, {}
+
+
+def _supports_brightness(attributes):
+    if not isinstance(attributes, dict):
+        return False
+
+    supported_color_modes = attributes.get("supported_color_modes")
+    if isinstance(supported_color_modes, (list, tuple, set)):
+        for mode in supported_color_modes:
+            if mode and str(mode).lower() != "onoff":
+                return True
+        return False
+
+    supported_features = attributes.get("supported_features")
+    if isinstance(supported_features, int):
+        return bool(supported_features & 1)
+
+    return attributes.get("brightness") is not None
+
+
+def _resolve_entities(entity_ids):
+    queue = list(entity_ids)
+    lights_with_brightness = []
+    lights_without_brightness = []
+    switches = []
+    missing = []
+    missing_seen = set()
+    unsupported = []
+    unsupported_seen = set()
+    seen_entities = set()
+    seen_groups = set()
+
+    while queue:
+        entity_id = queue.pop(0)
+        if not entity_id:
+            continue
+
+        domain, _, _ = entity_id.partition(".")
+        domain = domain.lower()
+
+        if domain == "group":
+            if entity_id in seen_groups:
+                continue
+            seen_groups.add(entity_id)
+            state_value, attributes = _get_entity_details(entity_id)
+            if state_value is None:
+                if entity_id not in missing_seen:
+                    missing.append(entity_id)
+                    missing_seen.add(entity_id)
+                continue
+            members = attributes.get("entity_id") or attributes.get("entity_ids") or []
+            queue.extend(_normalize_targets(members))
+            continue
+
+        if entity_id in seen_entities:
+            continue
+
+        state_value, attributes = _get_entity_details(entity_id)
+        if state_value is None or str(state_value).lower() in {"unavailable", "unknown"}:
+            if entity_id not in missing_seen:
+                missing.append(entity_id)
+                missing_seen.add(entity_id)
+            continue
+
+        seen_entities.add(entity_id)
+
+        if domain == "light":
+            if _supports_brightness(attributes):
+                lights_with_brightness.append(entity_id)
+            else:
+                lights_without_brightness.append(entity_id)
+        elif domain == "switch":
+            switches.append(entity_id)
+        else:
+            if entity_id not in unsupported_seen:
+                unsupported.append(entity_id)
+                unsupported_seen.add(entity_id)
+
+    return (
+        lights_with_brightness,
+        lights_without_brightness,
+        switches,
+        missing,
+        unsupported,
+    )
+
 @service
 async def shelves_doorbell_flash_py(**kw):
     # wrapper for existing YAML calls
@@ -23,15 +135,32 @@ async def shelves_doorbell_flash_py(**kw):
 @service
 async def shelves_flash(
     targets=None,
+    entity_id=None,
+    targets_group=None,
     flashes: int = 3,
     brightness: int = 230,
     on_ms: int = 200,
     off_ms: int = 200,
+    **kwargs,
 ):
-    ids = _normalize_targets(targets)
-    if not ids:
-        log.warning("shelves_flash: no targets provided")
-        return
+    raw_ids = []
+    for source in (targets, entity_id, targets_group):
+        raw_ids.extend(_normalize_targets(source))
+
+    for key in kwargs:
+        if isinstance(key, str) and key.startswith(("light.", "switch.", "group.")):
+            raw_ids.append(key)
+
+    if not raw_ids:
+        raw_ids = ["light.shelves_all"]
+
+    # dedupe while preserving order
+    ids = []
+    seen_ids = set()
+    for candidate_id in raw_ids:
+        if candidate_id not in seen_ids:
+            ids.append(candidate_id)
+            seen_ids.add(candidate_id)
 
     # clamp/convert inputs
     flashes = max(1, int(flashes))
@@ -42,37 +171,54 @@ async def shelves_flash(
     # ensure only one flasher runs at a time
     await task.unique("shelves_flash", kill_me=True)
 
-    available = []
-    missing = []
-    for entity_id in ids:
-        try:
-            entity_state = state.get(entity_id)
-        except (NameError, KeyError):
-            entity_state = None
-        except Exception as err:  # pragma: no cover - defensive logging
-            log.warning(
-                "shelves_flash: error retrieving state for %s: %s", entity_id, err
-            )
-            entity_state = None
-
-        if entity_state is None:
-            missing.append(entity_id)
-            continue
-
-        available.append(entity_id)
+    (
+        lights_with_brightness,
+        lights_without_brightness,
+        switches,
+        missing,
+        unsupported,
+    ) = _resolve_entities(ids)
 
     if missing:
-        log.warning("shelves_flash: skipping unavailable targets: %s", ", ".join(missing))
+        log.warning(
+            "shelves_flash: skipping unavailable targets: %s", ", ".join(missing)
+        )
+
+    if unsupported:
+        log.warning(
+            "shelves_flash: ignoring unsupported domains: %s", ", ".join(unsupported)
+        )
+
+    available = (
+        lights_with_brightness
+        + lights_without_brightness
+        + switches
+    )
 
     if not available:
         log.error("shelves_flash: no usable targets after filtering unavailable entities")
         raise ValueError("shelves_flash: no usable targets")
 
     for i in range(flashes):
-        # turn on (brightness optional; remove if your lights are on/off only)
-        service.call("light", "turn_on", entity_id=available, brightness=brightness)
+        if lights_with_brightness:
+            service.call(
+                "light",
+                "turn_on",
+                entity_id=lights_with_brightness,
+                brightness=brightness,
+            )
+        if lights_without_brightness:
+            service.call("light", "turn_on", entity_id=lights_without_brightness)
+        if switches:
+            service.call("switch", "turn_on", entity_id=switches)
+
         await task.sleep(on_s)
-        service.call("light", "turn_off", entity_id=available)
+
+        all_lights = lights_with_brightness + lights_without_brightness
+        if all_lights:
+            service.call("light", "turn_off", entity_id=all_lights)
+        if switches:
+            service.call("switch", "turn_off", entity_id=switches)
         if i < flashes - 1:
             await task.sleep(off_s)
 
