@@ -331,7 +331,8 @@ script:
           r: "{{ rgbw_list[0] | int(0) }}"
           g: "{{ rgbw_list[1] | int(0) }}"
           b: "{{ rgbw_list[2] | int(0) }}"
-          w: "{{ rgbw_list[3] | int(0) }}"
+          cw: "{{ rgbw_list[3] | int(0) }}"
+          ww: "{{ (rgbw_list[4] if (rgbw_list | length) > 4 else 0) | int(0) }}"
           bp: "{{ bright | default(100, true) | int }}"
           tr: "{{ trans | default(0, true) | float(0) }}"
       - repeat:
@@ -350,8 +351,8 @@ script:
                           - "{{ r | int }}"
                           - "{{ g | int }}"
                           - "{{ b | int }}"
-                          - "{{ w | int }}"
-                          - 0
+                          - "{{ cw | int }}"
+                          - "{{ ww | int }}"
                         brightness_pct: "{{ bp }}"
                         transition: "{{ tr }}"
                 - conditions: "{{ 'rgbw' in supported_modes }}"
@@ -364,7 +365,7 @@ script:
                           - "{{ r | int }}"
                           - "{{ g | int }}"
                           - "{{ b | int }}"
-                          - "{{ w | int }}"
+                          - "{{ cw | int }}"
                         brightness_pct: "{{ bp }}"
                         transition: "{{ tr }}"
               default:
