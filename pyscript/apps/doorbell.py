@@ -6,6 +6,7 @@
 # NOTE: Do not import helpers; Pyscript injects @service, log, task, service, etc.
 
 import time
+from collections.abc import Mapping
 
 DEFAULT_RGB_COLOR = [255, 0, 0]
 DEFAULT_COLOR_NAME = "red"
@@ -41,25 +42,31 @@ def _get_entity_details(entity_id):
     state_value = None
     attributes = {}
     legacy_attributes = {}
+    state_value_raw = None
 
     try:
-        state_value = state.get(entity_id)
+        state_value_raw = state.get(entity_id)
     except (NameError, KeyError, AttributeError):
-        state_value = None
+        state_value_raw = None
     except Exception as err:  # pragma: no cover - defensive logging
         log.warning("shelves_flash: error retrieving state for %s: %s", entity_id, err)
-        state_value = None
+        state_value_raw = None
 
-    if isinstance(state_value, dict):
+    if isinstance(state_value_raw, Mapping):
         # Some pyscript versions may still return the legacy dict payload when
         # calling state.get without attribute="all"; normalize to just the
         # state string so callers don't have to handle both cases.
-        legacy_attributes = state_value.get("attributes") or {}
-        state_value = state_value.get("state")
+        legacy_attributes = dict(state_value_raw.get("attributes") or {})
+        state_value = state_value_raw.get("state")
+    else:
+        state_value = state_value_raw
 
     try:
         entity_attributes = state.getattr(entity_id)
-        attributes = entity_attributes if isinstance(entity_attributes, dict) else {}
+        if isinstance(entity_attributes, Mapping):
+            attributes = dict(entity_attributes)
+        else:
+            attributes = {}
     except (NameError, KeyError, AttributeError):
         attributes = {}
     except Exception as err:  # pragma: no cover - defensive logging
