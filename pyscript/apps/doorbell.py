@@ -61,16 +61,18 @@ def _get_entity_details(entity_id):
     else:
         state_value = state_value_raw
 
+    attributes_raw = None
+
     try:
-        entity_attributes = state.getattr(entity_id)
+        attributes_raw = state.getattr(entity_id)
     except (NameError, KeyError, AttributeError):
-        entity_attributes = None
+        attributes_raw = None
     except Exception as err:  # pragma: no cover - defensive logging
         log.warning("shelves_flash: error retrieving attributes for %s: %s", entity_id, err)
-        entity_attributes = None
+        attributes_raw = None
 
-    if isinstance(entity_attributes, Mapping):
-        attributes = dict(entity_attributes)
+    if isinstance(attributes_raw, Mapping):
+        attributes = dict(attributes_raw)
     else:
         attributes = {}
 
