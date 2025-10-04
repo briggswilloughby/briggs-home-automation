@@ -39,29 +39,24 @@ def _normalize_targets(targets):
 
 def _get_entity_details(entity_id):
     try:
-        details = state.get(entity_id, attribute="all")
+        current_state = state.get(entity_id)
     except (NameError, KeyError):
-        details = None
+        current_state = None
     except Exception as err:  # pragma: no cover - defensive logging
         log.warning("shelves_flash: error retrieving state for %s: %s", entity_id, err)
-        details = None
+        current_state = None
 
-    if not details:
-        try:
-            current_state = state.get(entity_id)
-        except (NameError, KeyError):
-            current_state = None
-        except Exception as err:  # pragma: no cover - defensive logging
-            log.warning(
-                "shelves_flash: error retrieving state for %s: %s", entity_id, err
-            )
-            current_state = None
-        return current_state, {}
+    try:
+        attributes = state.getattr(entity_id)
+        if not isinstance(attributes, dict):
+            attributes = {}
+    except (NameError, KeyError):
+        attributes = {}
+    except Exception as err:  # pragma: no cover - defensive logging
+        log.warning("shelves_flash: error retrieving attributes for %s: %s", entity_id, err)
+        attributes = {}
 
-    if isinstance(details, dict):
-        return details.get("state"), details.get("attributes", {}) or {}
-
-    return details, {}
+    return current_state, attributes
 
 
 def _supports_brightness(attributes):
