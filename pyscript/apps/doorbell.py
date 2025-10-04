@@ -149,9 +149,48 @@ def _resolve_entities(entity_ids):
     )
 
 
+def _normalize_color_modes(value):
+    if isinstance(value, str):
+        value = [value]
+
+    normalized = []
+    if isinstance(value, (list, tuple, set)):
+        for mode in value:
+            if mode:
+                normalized.append(str(mode).lower())
+    return normalized
+
+
+def _preferred_color_payload_mode(supported_modes, current_mode=None):
+    normalized_modes = _normalize_color_modes(supported_modes)
+    current = str(current_mode).lower() if current_mode else None
+
+    if current in {"rgbww", "rgbw", "rgb"}:
+        return current
+    if current in {"hs", "xy"}:
+        return "rgb"
+
+    for candidate in ("rgbww", "rgbw", "rgb"):
+        if candidate in normalized_modes:
+            return candidate
+
+    if any(mode in {"hs", "xy"} for mode in normalized_modes):
+        return "rgb"
+
+    for mode in normalized_modes:
+        if mode and "rgb" in mode:
+            if "rgbww" in mode:
+                return "rgbww"
+            if "rgbw" in mode:
+                return "rgbw"
+            return "rgb"
+
+    return "rgb"
+
+
 def _parse_color(color_value):
     if color_value is None:
-        return list(DEFAULT_RGB_COLOR), DEFAULT_COLOR_NAME
+        return list(DEFAULT_RGB_COLOR), DEFAULT_COLOR_NAME, []
 
     if isinstance(color_value, (list, tuple)):
         candidate_parts = list(color_value)
@@ -159,11 +198,11 @@ def _parse_color(color_value):
     elif isinstance(color_value, str):
         candidate = color_value.strip()
         if not candidate:
-            return list(DEFAULT_RGB_COLOR), DEFAULT_COLOR_NAME
+            return list(DEFAULT_RGB_COLOR), DEFAULT_COLOR_NAME, []
 
         lower_candidate = candidate.lower()
         if lower_candidate in _COLOR_NAME_TO_RGB:
-            return list(_COLOR_NAME_TO_RGB[lower_candidate]), lower_candidate
+            return list(_COLOR_NAME_TO_RGB[lower_candidate]), lower_candidate, []
 
         if candidate.startswith("#"):
             hex_value = candidate[1:]
@@ -174,14 +213,18 @@ def _parse_color(color_value):
                     rgb = [int(hex_value[i : i + 2], 16) for i in (0, 2, 4)]
                 else:
                     raise ValueError
-                return [max(0, min(255, component)) for component in rgb], lower_candidate
+                return (
+                    [max(0, min(255, component)) for component in rgb],
+                    lower_candidate,
+                    [],
+                )
             except (ValueError, TypeError):
                 log.warning(
                     "shelves_flash: unrecognized hex color %r; defaulting to %s",
                     color_value,
                     DEFAULT_COLOR_NAME,
                 )
-                return list(DEFAULT_RGB_COLOR), DEFAULT_COLOR_NAME
+                return list(DEFAULT_RGB_COLOR), DEFAULT_COLOR_NAME, []
 
         candidate_parts = candidate.replace(",", " ").split()
         description = ",".join(candidate_parts)
@@ -191,15 +234,17 @@ def _parse_color(color_value):
             type(color_value),
             DEFAULT_COLOR_NAME,
         )
-        return list(DEFAULT_RGB_COLOR), DEFAULT_COLOR_NAME
+        return list(DEFAULT_RGB_COLOR), DEFAULT_COLOR_NAME, []
 
-    if len(candidate_parts) == 3:
+    if len(candidate_parts) in (3, 4, 5):
         try:
-            rgb = [
+            parsed = [
                 max(0, min(255, int(float(part))))
                 for part in candidate_parts
             ]
-            return rgb, description
+            rgb = parsed[:3]
+            extra = parsed[3:]
+            return rgb, description, extra
         except (TypeError, ValueError):
             pass
 
@@ -208,7 +253,7 @@ def _parse_color(color_value):
         color_value,
         DEFAULT_COLOR_NAME,
     )
-    return list(DEFAULT_RGB_COLOR), DEFAULT_COLOR_NAME
+    return list(DEFAULT_RGB_COLOR), DEFAULT_COLOR_NAME, []
 
 @service
 async def shelves_doorbell_flash_py(**kw):
@@ -257,7 +302,7 @@ async def shelves_flash(
         color = kwargs.get("color")
 
     color_requested = color is not None
-    rgb_color, color_label = _parse_color(color)
+    rgb_color, color_label, extra_channels = _parse_color(color)
 
     # ensure only one flasher runs at a time
     await task.unique("shelves_flash", kill_me=True)
@@ -282,6 +327,8 @@ async def shelves_flash(
 
     color_capable_lights = []
     brightness_only_lights = []
+    color_payload_modes = {}
+
     for entity_id in lights_with_brightness:
         try:
             entity_attributes = state.getattr(entity_id) or {}
@@ -292,21 +339,31 @@ async def shelves_flash(
             entity_attributes = {}
 
         supported_color_modes = entity_attributes.get("supported_color_modes")
-        if isinstance(supported_color_modes, str):
-            supported_color_modes = [supported_color_modes]
+        current_color_mode = entity_attributes.get("color_mode")
+        normalized_modes = _normalize_color_modes(supported_color_modes)
 
         supports_color = False
-        if isinstance(supported_color_modes, (list, tuple, set)):
-            for mode in supported_color_modes:
-                if not mode:
-                    continue
-                mode_str = str(mode).lower()
-                if mode_str in {"hs", "rgb", "rgbw", "rgbww", "xy"} or "rgb" in mode_str:
-                    supports_color = True
-                    break
+        for mode_str in normalized_modes:
+            if mode_str in {"hs", "rgb", "rgbw", "rgbww", "xy"} or "rgb" in mode_str:
+                supports_color = True
+                break
+
+        if not supports_color and current_color_mode:
+            current_mode_normalized = str(current_color_mode).lower()
+            if (
+                current_mode_normalized in {"hs", "rgb", "rgbw", "rgbww", "xy"}
+                or "rgb" in current_mode_normalized
+            ):
+                supports_color = True
+                if current_mode_normalized not in normalized_modes:
+                    normalized_modes = normalized_modes + [current_mode_normalized]
 
         if supports_color:
             color_capable_lights.append(entity_id)
+            color_payload_modes[entity_id] = _preferred_color_payload_mode(
+                normalized_modes,
+                current_color_mode,
+            )
         else:
             brightness_only_lights.append(entity_id)
 
@@ -316,6 +373,20 @@ async def shelves_flash(
         + lights_without_brightness
         + switches
     )
+
+    rgb_payload = []
+    rgbw_payload = []
+    rgbww_payload = []
+
+    if color_capable_lights:
+        for entity_id in color_capable_lights:
+            mode = color_payload_modes.get(entity_id, "rgb")
+            if mode == "rgbww":
+                rgbww_payload.append(entity_id)
+            elif mode == "rgbw":
+                rgbw_payload.append(entity_id)
+            else:
+                rgb_payload.append(entity_id)
 
     if color_requested:
         unsupported_color_entities = (
@@ -334,6 +405,30 @@ async def shelves_flash(
                 color_label,
                 ", ".join(unsupported_color_entities),
             )
+
+        if color_capable_lights:
+            for entity_id in color_capable_lights:
+                mode = color_payload_modes.get(entity_id, "rgb")
+                if mode == "rgbww":
+                    payload = list(rgb_color) + [
+                        extra_channels[0] if len(extra_channels) > 0 else 0,
+                        extra_channels[1] if len(extra_channels) > 1 else 0,
+                    ]
+                    payload_key = "rgbww_color"
+                elif mode == "rgbw":
+                    payload = list(rgb_color) + [
+                        extra_channels[0] if len(extra_channels) > 0 else 0
+                    ]
+                    payload_key = "rgbw_color"
+                else:
+                    payload = list(rgb_color)
+                    payload_key = "rgb_color"
+                log.info(
+                    "shelves_flash: using %s %s for %s",
+                    payload_key,
+                    payload,
+                    entity_id,
+                )
 
     if not available:
         log.error("shelves_flash: no usable targets after filtering unavailable entities")
@@ -355,13 +450,39 @@ async def shelves_flash(
 
     for i in range(flashes):
         if color_capable_lights:
-            service.call(
-                "light",
-                "turn_on",
-                entity_id=color_capable_lights,
-                brightness=brightness,
-                rgb_color=list(rgb_color),
-            )
+            if rgb_payload:
+                service.call(
+                    "light",
+                    "turn_on",
+                    entity_id=rgb_payload,
+                    brightness=brightness,
+                    rgb_color=list(rgb_color),
+                )
+
+            if rgbw_payload:
+                rgbw_color = list(rgb_color) + [
+                    extra_channels[0] if len(extra_channels) > 0 else 0
+                ]
+                service.call(
+                    "light",
+                    "turn_on",
+                    entity_id=rgbw_payload,
+                    brightness=brightness,
+                    rgbw_color=rgbw_color,
+                )
+
+            if rgbww_payload:
+                rgbww_color = list(rgb_color) + [
+                    extra_channels[0] if len(extra_channels) > 0 else 0,
+                    extra_channels[1] if len(extra_channels) > 1 else 0,
+                ]
+                service.call(
+                    "light",
+                    "turn_on",
+                    entity_id=rgbww_payload,
+                    brightness=brightness,
+                    rgbww_color=rgbww_color,
+                )
         if brightness_only_lights:
             service.call(
                 "light",
