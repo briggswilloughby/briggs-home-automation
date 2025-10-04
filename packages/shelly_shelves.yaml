@@ -339,7 +339,7 @@ script:
           for_each: "{{ targets_list }}"
           sequence:
             - variables:
-                supported_modes: "{{ (state_attr(repeat.item, 'supported_color_modes') | default([], true)) | list }}"
+                supported_modes: "{{ state_attr(repeat.item, 'supported_color_modes') | default([], true) }}"
             - choose:
                 - conditions: "{{ 'rgbww' in supported_modes }}"
                   sequence:
