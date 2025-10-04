@@ -339,46 +339,23 @@ script:
           for_each: "{{ targets_list }}"
           sequence:
             - variables:
-                supported_modes: "{{ state_attr(repeat.item, 'supported_color_modes') | default([], true) }}"
-            - choose:
-                - conditions: "{{ 'rgbww' in supported_modes }}"
-                  sequence:
-                    - service: light.turn_on
-                      target:
-                        entity_id: "{{ repeat.item }}"
-                      data:
-                        brightness_pct: {{ bp | int }}
-                        transition: {{ tr | float }}
-                        rgbww_color:
-                          - {{ r | int }}
-                          - {{ g | int }}
-                          - {{ b | int }}
-                          - {{ cw | int }}
-                          - {{ ww | int }}
-                - conditions: "{{ 'rgbw' in supported_modes }}"
-                  sequence:
-                    - service: light.turn_on
-                      target:
-                        entity_id: "{{ repeat.item }}"
-                      data:
-                        brightness_pct: {{ bp | int }}
-                        transition: {{ tr | float }}
-                        rgbw_color:
-                          - {{ r | int }}
-                          - {{ g | int }}
-                          - {{ b | int }}
-                          - {{ cw | int }}
-              default:
-                - service: light.turn_on
-                  target:
-                    entity_id: "{{ repeat.item }}"
-                  data:
-                    brightness_pct: {{ bp | int }}
-                    transition: {{ tr | float }}
-                    rgb_color:
-                      - {{ r | int }}
-                      - {{ g | int }}
-                      - {{ b | int }}
+                supported_modes: >-
+                  {{ state_attr(repeat.item, 'supported_color_modes') | default([], true) | list }}
+                color_payload: >-
+                  {% if 'rgbww' in supported_modes %}
+                    {{ {'rgbww_color': [r | int, g | int, b | int, cw | int, ww | int]} | tojson }}
+                  {% elif 'rgbw' in supported_modes %}
+                    {{ {'rgbw_color': [r | int, g | int, b | int, cw | int]} | tojson }}
+                  {% else %}
+                    {{ {'rgb_color': [r | int, g | int, b | int]} | tojson }}
+                  {% endif %}
+            - service: light.turn_on
+              target:
+                entity_id: "{{ repeat.item }}"
+              data:
+                brightness_pct: {{ bp | int }}
+                transition: {{ tr | float }}
+                <<: "{{ color_payload | from_json }}"
 
 #########################
 # 4) OPTIONAL AUTOMATIONS
