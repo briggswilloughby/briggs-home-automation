@@ -63,14 +63,15 @@ def _get_entity_details(entity_id):
 
     try:
         entity_attributes = state.getattr(entity_id)
-        if isinstance(entity_attributes, Mapping):
-            attributes = dict(entity_attributes)
-        else:
-            attributes = {}
     except (NameError, KeyError, AttributeError):
-        attributes = {}
+        entity_attributes = None
     except Exception as err:  # pragma: no cover - defensive logging
         log.warning("shelves_flash: error retrieving attributes for %s: %s", entity_id, err)
+        entity_attributes = None
+
+    if isinstance(entity_attributes, Mapping):
+        attributes = dict(entity_attributes)
+    else:
         attributes = {}
 
     if not attributes and legacy_attributes:
