@@ -337,17 +337,47 @@ script:
       - repeat:
           for_each: "{{ targets_list }}"
           sequence:
-            - service: light.turn_on
-              target:
-                entity_id: "{{ repeat.item }}"
-              data:
-                rgbw_color:
-                  - "{{ r | int }}"
-                  - "{{ g | int }}"
-                  - "{{ b | int }}"
-                  - "{{ w | int }}"
-                brightness_pct: "{{ bp }}"
-                transition: "{{ tr }}"
+            - variables:
+                supported_modes: "{{ state_attr(repeat.item, 'supported_color_modes') | default([], true) }}"
+            - choose:
+                - conditions: "{{ 'rgbww' in supported_modes }}"
+                  sequence:
+                    - service: light.turn_on
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        rgbww_color:
+                          - "{{ r | int }}"
+                          - "{{ g | int }}"
+                          - "{{ b | int }}"
+                          - "{{ w | int }}"
+                          - 0
+                        brightness_pct: "{{ bp }}"
+                        transition: "{{ tr }}"
+                - conditions: "{{ 'rgbw' in supported_modes }}"
+                  sequence:
+                    - service: light.turn_on
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        rgbw_color:
+                          - "{{ r | int }}"
+                          - "{{ g | int }}"
+                          - "{{ b | int }}"
+                          - "{{ w | int }}"
+                        brightness_pct: "{{ bp }}"
+                        transition: "{{ tr }}"
+              default:
+                - service: light.turn_on
+                  target:
+                    entity_id: "{{ repeat.item }}"
+                  data:
+                    rgb_color:
+                      - "{{ r | int }}"
+                      - "{{ g | int }}"
+                      - "{{ b | int }}"
+                    brightness_pct: "{{ bp }}"
+                    transition: "{{ tr }}"
 
 #########################
 # 4) OPTIONAL AUTOMATIONS
