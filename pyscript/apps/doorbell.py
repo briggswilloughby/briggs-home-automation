@@ -49,6 +49,12 @@ def _get_entity_details(entity_id):
         log.warning("shelves_flash: error retrieving state for %s: %s", entity_id, err)
         state_value = None
 
+    if isinstance(state_value, dict):
+        # Some pyscript versions may still return the legacy dict payload when
+        # calling state.get without attribute="all"; normalize to just the
+        # state string so callers don't have to handle both cases.
+        state_value = state_value.get("state")
+
     try:
         entity_attributes = state.getattr(entity_id)
         if isinstance(entity_attributes, dict):
