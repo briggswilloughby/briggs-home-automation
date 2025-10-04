@@ -40,6 +40,7 @@ def _normalize_targets(targets):
 def _get_entity_details(entity_id):
     state_value = None
     attributes = {}
+    legacy_attributes = {}
 
     try:
         state_value = state.get(entity_id)
@@ -53,19 +54,20 @@ def _get_entity_details(entity_id):
         # Some pyscript versions may still return the legacy dict payload when
         # calling state.get without attribute="all"; normalize to just the
         # state string so callers don't have to handle both cases.
+        legacy_attributes = state_value.get("attributes") or {}
         state_value = state_value.get("state")
 
     try:
         entity_attributes = state.getattr(entity_id)
-        if isinstance(entity_attributes, dict):
-            attributes = entity_attributes
-        else:
-            attributes = {}
+        attributes = entity_attributes if isinstance(entity_attributes, dict) else {}
     except (NameError, KeyError, AttributeError):
         attributes = {}
     except Exception as err:  # pragma: no cover - defensive logging
         log.warning("shelves_flash: error retrieving attributes for %s: %s", entity_id, err)
         attributes = {}
+
+    if not attributes and legacy_attributes:
+        attributes = legacy_attributes
 
     return state_value, attributes
 
