@@ -41,7 +41,7 @@ def _normalize_targets(targets):
 def _get_entity_details(entity_id):
     state_value = None
     attributes = {}
-    legacy_attributes = {}
+    legacy_attributes = None
     state_value_raw = None
 
     try:
@@ -73,11 +73,9 @@ def _get_entity_details(entity_id):
 
     if isinstance(attributes_raw, Mapping):
         attributes = dict(attributes_raw)
-    else:
-        attributes = {}
 
     if not attributes and legacy_attributes:
-        attributes = legacy_attributes
+        attributes = dict(legacy_attributes)
 
     return state_value, attributes
 
