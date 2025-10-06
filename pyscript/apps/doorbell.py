@@ -5,27 +5,18 @@
 #
 # NOTE: Do not import helpers; Pyscript injects @service, log, task, service, etc.
 
-import time
-from collections.abc import Mapping
+import asyncio
+from time import monotonic
 
-DEFAULT_RGB_COLOR = [255, 0, 0]
-DEFAULT_COLOR_NAME = "red"
+_DEFAULT_SHELF_TARGETS = [
+    "light.shelf_1",
+    "light.shelf_2",
+    "light.shelf_3",
+    "light.shelf_4",
+]
 
-_COLOR_NAME_TO_RGB = {
-    "red": (255, 0, 0),
-    "green": (0, 255, 0),
-    "blue": (0, 0, 255),
-    "yellow": (255, 255, 0),
-    "orange": (255, 165, 0),
-    "purple": (128, 0, 128),
-    "pink": (255, 192, 203),
-    "cyan": (0, 255, 255),
-    "magenta": (255, 0, 255),
-    "teal": (0, 128, 128),
-    "white": (255, 255, 255),
-    "warm_white": (255, 244, 229),
-    "cool_white": (204, 255, 255),
-}
+_doorbell_guard_lock = asyncio.Lock()
+_doorbell_last_run = 0.0
 
 def _normalize_targets(targets):
     if not targets:
@@ -38,239 +29,139 @@ def _normalize_targets(targets):
     return [str(targets)]
 
 
-def _get_entity_details(entity_id):
-    state_value = None
-    attributes = {}
-    legacy_attributes = None
-    state_value_raw = None
-
-    try:
-        state_value_raw = state.get(entity_id)
-    except (NameError, KeyError, AttributeError):
-        state_value_raw = None
-    except Exception as err:  # pragma: no cover - defensive logging
-        log.warning("shelves_flash: error retrieving state for %s: %s", entity_id, err)
-        state_value_raw = None
-
-    if isinstance(state_value_raw, Mapping):
-        # Some pyscript versions may still return the legacy dict payload when
-        # calling state.get without attribute="all"; normalize to just the
-        # state string so callers don't have to handle both cases.
-        legacy_attributes = dict(state_value_raw.get("attributes") or {})
-        state_value = state_value_raw.get("state")
-    else:
-        state_value = state_value_raw
-
-    attributes_raw = None
-
-    try:
-        attributes_raw = state.getattr(entity_id)
-    except (NameError, KeyError, AttributeError):
-        attributes_raw = None
-    except Exception as err:  # pragma: no cover - defensive logging
-        log.warning("shelves_flash: error retrieving attributes for %s: %s", entity_id, err)
-        attributes_raw = None
-
-    if isinstance(attributes_raw, Mapping):
-        attributes = dict(attributes_raw)
-
-    if not attributes and legacy_attributes:
-        attributes = dict(legacy_attributes)
-
-    return state_value, attributes
-
-
-def _supports_brightness(attributes):
-    if not isinstance(attributes, dict):
-        return False
-
-    supported_color_modes = attributes.get("supported_color_modes")
-    if isinstance(supported_color_modes, (list, tuple, set)):
-        for mode in supported_color_modes:
-            if mode and str(mode).lower() != "onoff":
-                return True
-        return False
-
-    supported_features = attributes.get("supported_features")
-    if isinstance(supported_features, int):
-        return bool(supported_features & 1)
-
-    return attributes.get("brightness") is not None
-
-
-def _resolve_entities(entity_ids):
-    queue = list(entity_ids)
-    lights_with_brightness = []
-    lights_without_brightness = []
-    switches = []
-    missing = []
-    missing_seen = set()
-    unsupported = []
-    unsupported_seen = set()
-    seen_entities = set()
-    seen_groups = set()
-
-    while queue:
-        entity_id = queue.pop(0)
-        if not entity_id:
-            continue
-
-        domain, _, _ = entity_id.partition(".")
-        domain = domain.lower()
-
-        if domain == "group":
-            if entity_id in seen_groups:
-                continue
-            seen_groups.add(entity_id)
-            state_value, attributes = _get_entity_details(entity_id)
-            if state_value is None:
-                if entity_id not in missing_seen:
-                    missing.append(entity_id)
-                    missing_seen.add(entity_id)
-                continue
-            members = attributes.get("entity_id") or attributes.get("entity_ids") or []
-            queue.extend(_normalize_targets(members))
-            continue
-
-        if entity_id in seen_entities:
-            continue
-
-        state_value, attributes = _get_entity_details(entity_id)
-        if state_value is None or str(state_value).lower() in {"unavailable", "unknown"}:
-            if entity_id not in missing_seen:
-                missing.append(entity_id)
-                missing_seen.add(entity_id)
-            continue
-
-        seen_entities.add(entity_id)
-
-        if domain == "light":
-            if _supports_brightness(attributes):
-                lights_with_brightness.append(entity_id)
-            else:
-                lights_without_brightness.append(entity_id)
-        elif domain == "switch":
-            switches.append(entity_id)
-        else:
-            if entity_id not in unsupported_seen:
-                unsupported.append(entity_id)
-                unsupported_seen.add(entity_id)
-
-    return (
-        lights_with_brightness,
-        lights_without_brightness,
-        switches,
-        missing,
-        unsupported,
-    )
-
-
-def _normalize_color_modes(value):
+def _parse_duration(value):
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return max(0.0, float(value))
     if isinstance(value, str):
-        value = [value]
-
-    normalized = []
-    if isinstance(value, (list, tuple, set)):
-        for mode in value:
-            if mode:
-                normalized.append(str(mode).lower())
-    return normalized
-
-
-def _preferred_color_payload_mode(supported_modes, current_mode=None):
-    normalized_modes = _normalize_color_modes(supported_modes)
-    current = str(current_mode).lower() if current_mode else None
-
-    if current in {"rgbww", "rgbw", "rgb"}:
-        return current
-    if current in {"hs", "xy"}:
-        return "rgb"
-
-    for candidate in ("rgbww", "rgbw", "rgb"):
-        if candidate in normalized_modes:
-            return candidate
-
-    if any(mode in {"hs", "xy"} for mode in normalized_modes):
-        return "rgb"
-
-    for mode in normalized_modes:
-        if mode and "rgb" in mode:
-            if "rgbww" in mode:
-                return "rgbww"
-            if "rgbw" in mode:
-                return "rgbw"
-            return "rgb"
-
-    return "rgb"
-
-
-def _parse_color(color_value):
-    if color_value is None:
-        return list(DEFAULT_RGB_COLOR), DEFAULT_COLOR_NAME, []
-
-    if isinstance(color_value, (list, tuple)):
-        candidate_parts = list(color_value)
-        description = ",".join(str(part) for part in candidate_parts)
-    elif isinstance(color_value, str):
-        candidate = color_value.strip()
-        if not candidate:
-            return list(DEFAULT_RGB_COLOR), DEFAULT_COLOR_NAME, []
-
-        lower_candidate = candidate.lower()
-        if lower_candidate in _COLOR_NAME_TO_RGB:
-            return list(_COLOR_NAME_TO_RGB[lower_candidate]), lower_candidate, []
-
-        if candidate.startswith("#"):
-            hex_value = candidate[1:]
-            try:
-                if len(hex_value) == 3:
-                    rgb = [int(c * 2, 16) for c in hex_value]
-                elif len(hex_value) == 6:
-                    rgb = [int(hex_value[i : i + 2], 16) for i in (0, 2, 4)]
-                else:
-                    raise ValueError
-                return (
-                    [max(0, min(255, component)) for component in rgb],
-                    lower_candidate,
-                    [],
-                )
-            except (ValueError, TypeError):
-                log.warning(
-                    "shelves_flash: unrecognized hex color %r; defaulting to %s",
-                    color_value,
-                    DEFAULT_COLOR_NAME,
-                )
-                return list(DEFAULT_RGB_COLOR), DEFAULT_COLOR_NAME, []
-
-        candidate_parts = candidate.replace(",", " ").split()
-        description = ",".join(candidate_parts)
-    else:
-        log.warning(
-            "shelves_flash: unsupported color type %r; defaulting to %s",
-            type(color_value),
-            DEFAULT_COLOR_NAME,
-        )
-        return list(DEFAULT_RGB_COLOR), DEFAULT_COLOR_NAME, []
-
-    if len(candidate_parts) in (3, 4, 5):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        parts = stripped.split(":")
         try:
-            parsed = [
-                max(0, min(255, int(float(part))))
-                for part in candidate_parts
-            ]
-            rgb = parsed[:3]
-            extra = parsed[3:]
-            return rgb, description, extra
+            if len(parts) == 3:
+                hours, minutes, seconds = parts
+            elif len(parts) == 2:
+                hours = 0
+                minutes, seconds = parts
+            else:
+                return max(0.0, float(stripped))
+            total = (int(hours) * 3600) + (int(minutes) * 60) + float(seconds)
+            return max(0.0, float(total))
         except (TypeError, ValueError):
-            pass
+            try:
+                return max(0.0, float(stripped))
+            except (TypeError, ValueError):
+                return None
+    return None
 
-    log.warning(
-        "shelves_flash: unrecognized color %r; defaulting to %s",
-        color_value,
-        DEFAULT_COLOR_NAME,
-    )
-    return list(DEFAULT_RGB_COLOR), DEFAULT_COLOR_NAME, []
 
+def _coerce_bool(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "on", "yes", "y"}
+    return bool(value)
+
+
+def _pct_to_brightness(pct):
+    try:
+        pct_value = float(pct)
+    except (TypeError, ValueError):
+        pct_value = 0.0
+    pct_value = max(0.0, min(100.0, pct_value))
+    if pct_value <= 0.0:
+        return 0
+    return int(round(255 * (pct_value / 100.0))) or 1
+
+
+def _to_float(value, default=0.0):
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except (TypeError, ValueError):
+            duration = _parse_duration(value)
+            if duration is not None:
+                return duration
+    return default
+
+
+@service
+async def doorbell_ring_py(
+    players=None,
+    chime_url=None,
+    chime_vol=0.4,
+    chime_len=None,
+    flash_repeats=3,
+    flash_on_time_ms=250,
+    flash_brightness_pct=50,
+    flash_enabled=True,
+    guard_seconds=4,
+):
+    guard = max(0.0, _to_float(guard_seconds, default=0.0))
+    async with _doorbell_guard_lock:
+        global _doorbell_last_run
+        now = monotonic()
+        if guard > 0 and (now - _doorbell_last_run) < guard:
+            remaining = guard - (now - _doorbell_last_run)
+            log.info(
+                "doorbell_ring_py: guard active (%.2fs remaining); skipping", max(0.0, remaining)
+            )
+            return
+        _doorbell_last_run = now
+
+    player_ids = _normalize_targets(players)
+    wait_s = _parse_duration(chime_len)
+    sonos_tasks = []
+    for player in player_ids:
+        sonos_tasks.append(
+            sonos_doorbell_chime_py(
+                player=player,
+                media_url=chime_url,
+                volume=chime_vol,
+                wait_s=wait_s,
+            )
+        )
+
+    flash_tasks = []
+    if _coerce_bool(flash_enabled):
+        flashes = 0
+        try:
+            flashes = int(float(flash_repeats))
+        except (TypeError, ValueError):
+            flashes = 0
+        if flashes > 0:
+            brightness = _pct_to_brightness(flash_brightness_pct)
+            if brightness > 0:
+                on_ms = int(max(50, float(flash_on_time_ms or 0)))
+                flash_tasks.append(
+                    shelves_flash(
+                        targets=_DEFAULT_SHELF_TARGETS,
+                        flashes=flashes,
+                        brightness=brightness,
+                        on_ms=on_ms,
+                        off_ms=on_ms,
+                    )
+                )
+
+    pending = []
+    if sonos_tasks:
+        pending.extend(sonos_tasks)
+    if flash_tasks:
+        pending.extend(flash_tasks)
+
+    if not pending:
+        log.warning("doorbell_ring_py: nothing to do (no players or flash targets)")
+        return
+
+    await asyncio.gather(*pending)
 @service
 async def shelves_doorbell_flash_py(**kw):
     # wrapper for existing YAML calls
@@ -541,6 +432,18 @@ async def sonos_doorbell_chime_py(**kw):
     await sonos_ding(**kw)
 
 @service
-async def sonos_ding(player: str | None = None, volume: float = 0.15):
+async def sonos_ding(
+    player: str | None = None,
+    media_url: str | None = None,
+    volume: float = 0.15,
+    wait_s: float | None = None,
+):
     # stub: swap in real chime logic when ready
-    log.info("Stub sonos_ding: player=%s volume=%s", player, volume)
+    wait_value = _parse_duration(wait_s)
+    log.info(
+        "Stub sonos_ding: player=%s volume=%s media_url=%s wait_s=%s",
+        player,
+        volume,
+        media_url,
+        wait_value,
+    )
