@@ -176,6 +176,8 @@ async def shelves_flash(
     brightness: int = 230,
     on_ms: int = 200,
     off_ms: int = 200,
+    restore: bool = True,
+    color=None,
     **kwargs,
 ):
     raw_ids = []
@@ -203,6 +205,12 @@ async def shelves_flash(
     on_s = max(0.05, float(on_ms) / 1000.0)
     off_s = max(0.05, float(off_ms) / 1000.0)
 
+    if color is None:
+        color = kwargs.get("color")
+
+    color_requested = color is not None
+    rgb_color, color_label, extra_channels = _parse_color(color)
+
     # ensure only one flasher runs at a time
     await task.unique("shelves_flash", kill_me=True)
 
@@ -224,22 +232,169 @@ async def shelves_flash(
             "shelves_flash: ignoring unsupported domains: %s", ", ".join(unsupported)
         )
 
+    color_capable_lights = []
+    brightness_only_lights = []
+    color_payload_modes = {}
+
+    for entity_id in lights_with_brightness:
+        try:
+            entity_attributes = state.getattr(entity_id) or {}
+        except Exception as err:  # pragma: no cover - defensive logging
+            log.warning(
+                "shelves_flash: error retrieving attributes for %s: %s", entity_id, err
+            )
+            entity_attributes = {}
+
+        supported_color_modes = entity_attributes.get("supported_color_modes")
+        current_color_mode = entity_attributes.get("color_mode")
+        normalized_modes = _normalize_color_modes(supported_color_modes)
+
+        supports_color = False
+        for mode_str in normalized_modes:
+            if mode_str in {"hs", "rgb", "rgbw", "rgbww", "xy"} or "rgb" in mode_str:
+                supports_color = True
+                break
+
+        if not supports_color and current_color_mode:
+            current_mode_normalized = str(current_color_mode).lower()
+            if (
+                current_mode_normalized in {"hs", "rgb", "rgbw", "rgbww", "xy"}
+                or "rgb" in current_mode_normalized
+            ):
+                supports_color = True
+                if current_mode_normalized not in normalized_modes:
+                    normalized_modes = normalized_modes + [current_mode_normalized]
+
+        if supports_color:
+            color_capable_lights.append(entity_id)
+            color_payload_modes[entity_id] = _preferred_color_payload_mode(
+                normalized_modes,
+                current_color_mode,
+            )
+        else:
+            brightness_only_lights.append(entity_id)
+
     available = (
-        lights_with_brightness
+        color_capable_lights
+        + brightness_only_lights
         + lights_without_brightness
         + switches
     )
+
+    rgb_payload = []
+    rgbw_payload = []
+    rgbww_payload = []
+
+    if color_capable_lights:
+        for entity_id in color_capable_lights:
+            mode = color_payload_modes.get(entity_id, "rgb")
+            if mode == "rgbww":
+                rgbww_payload.append(entity_id)
+            elif mode == "rgbw":
+                rgbw_payload.append(entity_id)
+            else:
+                rgb_payload.append(entity_id)
+
+    if color_requested:
+        unsupported_color_entities = (
+            brightness_only_lights
+            + lights_without_brightness
+            + switches
+        )
+        if not color_capable_lights:
+            log.warning(
+                "shelves_flash: color '%s' requested but no color-capable lights available; continuing without color",
+                color_label,
+            )
+        elif unsupported_color_entities:
+            log.info(
+                "shelves_flash: color '%s' requested but unsupported by: %s",
+                color_label,
+                ", ".join(unsupported_color_entities),
+            )
+
+        if color_capable_lights:
+            for entity_id in color_capable_lights:
+                mode = color_payload_modes.get(entity_id, "rgb")
+                if mode == "rgbww":
+                    payload = list(rgb_color) + [
+                        extra_channels[0] if len(extra_channels) > 0 else 0,
+                        extra_channels[1] if len(extra_channels) > 1 else 0,
+                    ]
+                    payload_key = "rgbww_color"
+                elif mode == "rgbw":
+                    payload = list(rgb_color) + [
+                        extra_channels[0] if len(extra_channels) > 0 else 0
+                    ]
+                    payload_key = "rgbw_color"
+                else:
+                    payload = list(rgb_color)
+                    payload_key = "rgb_color"
+                log.info(
+                    "shelves_flash: using %s %s for %s",
+                    payload_key,
+                    payload,
+                    entity_id,
+                )
 
     if not available:
         log.error("shelves_flash: no usable targets after filtering unavailable entities")
         raise ValueError("shelves_flash: no usable targets")
 
+    restore_scene_entity = None
+    if restore:
+        scene_slug = f"shelves_flash_restore_{int(time.time() * 1000)}"
+        try:
+            service.call(
+                "scene",
+                "create",
+                scene_id=scene_slug,
+                snapshot_entities=available,
+            )
+            restore_scene_entity = f"scene.{scene_slug}"
+        except Exception as err:  # pragma: no cover - defensive logging
+            log.error("shelves_flash: failed to snapshot state for restore: %s", err)
+
     for i in range(flashes):
-        if lights_with_brightness:
+        if color_capable_lights:
+            if rgb_payload:
+                service.call(
+                    "light",
+                    "turn_on",
+                    entity_id=rgb_payload,
+                    brightness=brightness,
+                    rgb_color=list(rgb_color),
+                )
+
+            if rgbw_payload:
+                rgbw_color = list(rgb_color) + [
+                    extra_channels[0] if len(extra_channels) > 0 else 0
+                ]
+                service.call(
+                    "light",
+                    "turn_on",
+                    entity_id=rgbw_payload,
+                    brightness=brightness,
+                    rgbw_color=rgbw_color,
+                )
+
+            if rgbww_payload:
+                rgbww_color = list(rgb_color) + [
+                    extra_channels[0] if len(extra_channels) > 0 else 0,
+                    extra_channels[1] if len(extra_channels) > 1 else 0,
+                ]
+                service.call(
+                    "light",
+                    "turn_on",
+                    entity_id=rgbww_payload,
+                    brightness=brightness,
+                    rgbww_color=rgbww_color,
+                )
+        if brightness_only_lights:
             service.call(
                 "light",
                 "turn_on",
-                entity_id=lights_with_brightness,
+                entity_id=brightness_only_lights,
                 brightness=brightness,
             )
         if lights_without_brightness:
@@ -249,13 +404,27 @@ async def shelves_flash(
 
         await task.sleep(on_s)
 
-        all_lights = lights_with_brightness + lights_without_brightness
+        all_lights = (
+            color_capable_lights
+            + brightness_only_lights
+            + lights_without_brightness
+        )
         if all_lights:
             service.call("light", "turn_off", entity_id=all_lights)
         if switches:
             service.call("switch", "turn_off", entity_id=switches)
         if i < flashes - 1:
             await task.sleep(off_s)
+
+    if restore and restore_scene_entity:
+        try:
+            service.call("scene", "turn_on", entity_id=restore_scene_entity)
+        except Exception as err:  # pragma: no cover - defensive logging
+            log.error(
+                "shelves_flash: failed to restore snapshot scene %s: %s",
+                restore_scene_entity,
+                err,
+            )
 
 @service
 async def sonos_doorbell_chime_py(**kw):
