@@ -35,9 +35,17 @@ def _normalize_targets(targets):
         return []
     if isinstance(targets, str):
         # allow "light.a, light.b"
-        return [e.strip() for e in targets.split(",") if e.strip()]
+        cleaned = []
+        for element in targets.split(","):
+            stripped = element.strip()
+            if stripped:
+                cleaned.append(stripped)
+        return cleaned
     if isinstance(targets, (list, tuple, set)):
-        return [str(e) for e in targets]
+        cleaned = []
+        for element in targets:
+            cleaned.append(str(element))
+        return cleaned
     return [str(targets)]
 
 
