@@ -623,13 +623,17 @@ async def shelves_flash(
     # ensure only one flasher runs at a time
     await task.unique("shelves_flash", kill_me=True)
 
-    (
-        lights_with_brightness,
-        lights_without_brightness,
-        switches,
-        missing,
-        unsupported,
-    ) = _resolve_entities(ids)
+    details = _collect_target_details(ids)
+
+    missing = details["missing"]
+    unsupported = details["unsupported"]
+    color_rgb = details["color_rgb"]
+    color_rgbw = details["color_rgbw"]
+    color_rgbww = details["color_rgbww"]
+    brightness_only_lights = details["brightness"]
+    lights_without_brightness = details["no_brightness"]
+    switches = details["switches"]
+    ordered_lights = details["ordered_lights"]
 
     if missing:
         log.warning(
