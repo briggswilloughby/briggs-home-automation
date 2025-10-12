@@ -647,18 +647,17 @@ async def shelves_flash(
         color_payload_modes,
     ) = _categorize_color_lights(lights_with_brightness)
 
-    available = (
-        color_capable_lights
-        + brightness_only_lights
-        + lights_without_brightness
-        + switches
-    )
+    available = []
+    _extend_list(available, color_capable_lights)
+    _extend_list(available, brightness_only_lights)
+    _extend_list(available, lights_without_brightness)
+    _extend_list(available, switches)
 
     rgb_payload = []
     rgbw_payload = []
     rgbww_payload = []
 
-    if color_capable_lights:
+    if _has_items(color_capable_lights):
         for entity_id in color_capable_lights:
             mode = color_payload_modes.get(entity_id, "rgb")
             if mode == "rgbww":
@@ -674,35 +673,30 @@ async def shelves_flash(
             + lights_without_brightness
             + switches
         )
-        if not color_capable_lights:
+        if not _has_items(color_capable_lights):
             log.warning(
                 "shelves_flash: color '%s' requested but no color-capable lights available; continuing without color",
                 color_label,
             )
-        elif unsupported_color_entities:
+        elif _has_items(unsupported_color_entities):
             log.info(
                 "shelves_flash: color '%s' requested but unsupported by: %s",
                 color_label,
                 ", ".join(unsupported_color_entities),
             )
 
-        if color_capable_lights:
+        if _has_items(color_capable_lights):
             for entity_id in color_capable_lights:
                 mode = color_payload_modes.get(entity_id, "rgb")
+                payload_key = "rgb_color"
+                payload = _copy_rgb(rgb_color)
                 if mode == "rgbww":
-                    payload = list(rgb_color) + [
-                        extra_channels[0] if len(extra_channels) > 0 else 0,
-                        extra_channels[1] if len(extra_channels) > 1 else 0,
-                    ]
                     payload_key = "rgbww_color"
+                    payload.append(_extra_channel(extra_channels, 0))
+                    payload.append(_extra_channel(extra_channels, 1))
                 elif mode == "rgbw":
-                    payload = list(rgb_color) + [
-                        extra_channels[0] if len(extra_channels) > 0 else 0
-                    ]
                     payload_key = "rgbw_color"
-                else:
-                    payload = list(rgb_color)
-                    payload_key = "rgb_color"
+                    payload.append(_extra_channel(extra_channels, 0))
                 log.info(
                     "shelves_flash: using %s %s for %s",
                     payload_key,
@@ -710,7 +704,7 @@ async def shelves_flash(
                     entity_id,
                 )
 
-    if not available:
+    if not _has_items(available):
         log.error("shelves_flash: no usable targets after filtering unavailable entities")
         raise ValueError("shelves_flash: no usable targets")
 
@@ -729,20 +723,19 @@ async def shelves_flash(
             log.error("shelves_flash: failed to snapshot state for restore: %s", err)
 
     for i in range(flashes):
-        if color_capable_lights:
-            if rgb_payload:
+        if _has_items(color_capable_lights):
+            if _has_items(rgb_payload):
                 service.call(
                     "light",
                     "turn_on",
                     entity_id=rgb_payload,
                     brightness=brightness,
-                    rgb_color=list(rgb_color),
+                    rgb_color=_copy_rgb(rgb_color),
                 )
 
-            if rgbw_payload:
-                rgbw_color = list(rgb_color) + [
-                    extra_channels[0] if len(extra_channels) > 0 else 0
-                ]
+            if _has_items(rgbw_payload):
+                rgbw_color = _copy_rgb(rgb_color)
+                rgbw_color.append(_extra_channel(extra_channels, 0))
                 service.call(
                     "light",
                     "turn_on",
@@ -751,11 +744,10 @@ async def shelves_flash(
                     rgbw_color=rgbw_color,
                 )
 
-            if rgbww_payload:
-                rgbww_color = list(rgb_color) + [
-                    extra_channels[0] if len(extra_channels) > 0 else 0,
-                    extra_channels[1] if len(extra_channels) > 1 else 0,
-                ]
+            if _has_items(rgbww_payload):
+                rgbww_color = _copy_rgb(rgb_color)
+                rgbww_color.append(_extra_channel(extra_channels, 0))
+                rgbww_color.append(_extra_channel(extra_channels, 1))
                 service.call(
                     "light",
                     "turn_on",
@@ -763,28 +755,27 @@ async def shelves_flash(
                     brightness=brightness,
                     rgbww_color=rgbww_color,
                 )
-        if brightness_only_lights:
+        if _has_items(brightness_only_lights):
             service.call(
                 "light",
                 "turn_on",
                 entity_id=brightness_only_lights,
                 brightness=brightness,
             )
-        if lights_without_brightness:
+        if _has_items(lights_without_brightness):
             service.call("light", "turn_on", entity_id=lights_without_brightness)
-        if switches:
+        if _has_items(switches):
             service.call("switch", "turn_on", entity_id=switches)
 
         await task.sleep(on_s)
 
-        all_lights = (
-            color_capable_lights
-            + brightness_only_lights
-            + lights_without_brightness
-        )
-        if all_lights:
+        all_lights = []
+        _extend_list(all_lights, color_capable_lights)
+        _extend_list(all_lights, brightness_only_lights)
+        _extend_list(all_lights, lights_without_brightness)
+        if _has_items(all_lights):
             service.call("light", "turn_off", entity_id=all_lights)
-        if switches:
+        if _has_items(switches):
             service.call("switch", "turn_off", entity_id=switches)
         if i < flashes - 1:
             await task.sleep(off_s)
