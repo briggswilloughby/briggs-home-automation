@@ -158,16 +158,16 @@ def _preferred_color_payload_mode(modes, current_mode=None):
             return current_normalized
         if "rgb" in current_normalized:
             return "rgb"
-    for preferred in ("rgbww", "rgbw", "rgb"):
-        for mode in normalized:
-            if mode == preferred:
-                return preferred
-    for mode in normalized:
-        if "rgb" in mode:
-            return "rgb"
-    for mode in normalized:
-        if mode in {"hs", "xy"}:
-            return "rgb"
+    if "rgbww" in normalized:
+        return "rgbww"
+    if "rgbw" in normalized:
+        return "rgbw"
+    if "rgb" in normalized:
+        return "rgb"
+    if any("rgb" in mode for mode in normalized):
+        return "rgb"
+    if "hs" in normalized or "xy" in normalized:
+        return "rgb"
     return "rgb"
 
 
@@ -266,10 +266,12 @@ def _resolve_entities(entity_ids):
             supports_brightness = False
             if supported_features & 1:
                 supports_brightness = True
-            for mode in normalized_modes:
-                if mode in {"brightness", "hs", "rgb", "rgbw", "rgbww", "xy"} or "brightness" in mode:
-                    supports_brightness = True
-                    break
+            if any(
+                mode in {"brightness", "hs", "rgb", "rgbw", "rgbww", "xy"}
+                or "brightness" in mode
+                for mode in normalized_modes
+            ):
+                supports_brightness = True
 
             if supports_brightness:
                 lights_with_brightness.append(entity)
