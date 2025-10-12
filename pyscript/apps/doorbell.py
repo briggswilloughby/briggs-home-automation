@@ -121,13 +121,9 @@ def _parse_rgbw_values(value):
         if not cleaned:
             parts = []
         else:
-            parts = []
-            for segment in cleaned.split(","):
-                parts.append(segment.strip())
+            parts = [segment.strip() for segment in cleaned.split(",")]
     elif isinstance(value, (list, tuple, set)):
-        parts = []
-        for item in value:
-            parts.append(item)
+        parts = list(value)
     else:
         parts = [value]
 
@@ -143,19 +139,7 @@ def _parse_rgbw_values(value):
     while len(numeric) < 5:
         numeric.append(0)
 
-    clamped = []
-    for item in numeric[:5]:
-        try:
-            integer_value = int(item)
-        except (TypeError, ValueError):
-            integer_value = 0
-        if integer_value < 0:
-            integer_value = 0
-        elif integer_value > 255:
-            integer_value = 255
-        clamped.append(integer_value)
-
-    return clamped
+    return [max(0, min(255, int(v))) for v in numeric[:5]]
 
 
 def _normalize_color_modes(modes):
@@ -182,16 +166,16 @@ def _preferred_color_payload_mode(modes, current_mode=None):
             return current_normalized
         if "rgb" in current_normalized:
             return "rgb"
-    for preferred in ("rgbww", "rgbw", "rgb"):
-        for mode in normalized:
-            if mode == preferred:
-                return preferred
-    for mode in normalized:
-        if "rgb" in mode:
-            return "rgb"
-    for mode in normalized:
-        if mode in {"hs", "xy"}:
-            return "rgb"
+    if "rgbww" in normalized:
+        return "rgbww"
+    if "rgbw" in normalized:
+        return "rgbw"
+    if "rgb" in normalized:
+        return "rgb"
+    if any("rgb" in mode for mode in normalized):
+        return "rgb"
+    if "hs" in normalized or "xy" in normalized:
+        return "rgb"
     return "rgb"
 
 
@@ -224,23 +208,17 @@ def _parse_color(color):
                 hex_value = stripped.lstrip("#")
                 if len(hex_value) in {6, 8, 10}:
                     try:
-                        values = []
-                        index = 0
-                        while index < len(hex_value):
-                            chunk = hex_value[index : index + 2]
-                            values.append(int(chunk, 16))
-                            index += 2
+                        values = [
+                            int(hex_value[i : i + 2], 16)
+                            for i in range(0, len(hex_value), 2)
+                        ]
                     except ValueError:
                         values = []
                 else:
                     values = []
             else:
                 cleaned = stripped.strip("[]()")
-                parts = []
-                for segment in cleaned.split(","):
-                    stripped_segment = segment.strip()
-                    if stripped_segment:
-                        parts.append(stripped_segment)
+                parts = [segment.strip() for segment in cleaned.split(",") if segment.strip()]
                 values = []
                 for part in parts:
                     try:
@@ -254,28 +232,9 @@ def _parse_color(color):
     if len(values) < 3:
         values = list(default_rgb)
 
-    rgb_values = []
-    for raw_value in values[:3]:
-        try:
-            numeric_value = int(float(raw_value))
-        except (TypeError, ValueError):
-            numeric_value = 0
-        clamped_value = max(0, min(255, numeric_value))
-        rgb_values.append(clamped_value)
-
-    while len(rgb_values) < 3:
-        rgb_values.append(0)
-
-    extras = []
-    for raw_extra in values[3:]:
-        try:
-            numeric_extra = int(float(raw_extra))
-        except (TypeError, ValueError):
-            numeric_extra = 0
-        clamped_extra = max(0, min(255, numeric_extra))
-        extras.append(clamped_extra)
-
-    return tuple(rgb_values), label, extras
+    rgb = tuple(max(0, min(255, int(v))) for v in values[:3])
+    extras = [max(0, min(255, int(v))) for v in values[3:]]
+    return rgb, label, extras
 
 
 def _resolve_entities(entity_ids):
@@ -315,10 +274,12 @@ def _resolve_entities(entity_ids):
             supports_brightness = False
             if supported_features & 1:
                 supports_brightness = True
-            for mode in normalized_modes:
-                if mode in {"brightness", "hs", "rgb", "rgbw", "rgbww", "xy"} or "brightness" in mode:
-                    supports_brightness = True
-                    break
+            if any(
+                mode in {"brightness", "hs", "rgb", "rgbw", "rgbww", "xy"}
+                or "brightness" in mode
+                for mode in normalized_modes
+            ):
+                supports_brightness = True
 
             if supports_brightness:
                 lights_with_brightness.append(entity)
