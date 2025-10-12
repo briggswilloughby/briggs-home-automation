@@ -1,0 +1,19 @@
+intents:
+  HouseModeSet:
+    sentences:
+      - "set mode to {mode}"
+      - "set (house|home) mode to {mode}"
+      - "turn on {mode} mode"
+      - "switch to {mode} mode"
+
+lists:
+  mode:
+    values:
+      - in: "home"
+        out: "Home"
+      - in: "away"
+        out: "Away"
+      - in: "night"
+        out: "Night"
+      - in: "guest"
+        out: "Guest"
