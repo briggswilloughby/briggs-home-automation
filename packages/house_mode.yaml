@@ -1,0 +1,45 @@
+input_select:
+  house_mode:
+    name: House Mode
+    options: ["Home", "Away", "Night", "Guest"]
+    initial: Home
+    icon: mdi:home-account
+
+script:
+  mode_home:
+    alias: "Mode: Home"
+    sequence:
+      - service: input_select.select_option
+        target: { entity_id: input_select.house_mode }
+        data: { option: "Home" }
+  mode_away:
+    alias: "Mode: Away"
+    sequence:
+      - service: input_select.select_option
+        target: { entity_id: input_select.house_mode }
+        data: { option: "Away" }
+  mode_night:
+    alias: "Mode: Night"
+    sequence:
+      - service: input_select.select_option
+        target: { entity_id: input_select.house_mode }
+        data: { option: "Night" }
+  mode_guest:
+    alias: "Mode: Guest"
+    sequence:
+      - service: input_select.select_option
+        target: { entity_id: input_select.house_mode }
+        data: { option: "Guest" }
+
+intent_script:
+  HouseModeSet:
+    speech:
+      text: "Setting mode to {{ slots.mode }}"
+    action:
+      - service: input_select.select_option
+        target: { entity_id: input_select.house_mode }
+        data:
+          option: "{{ slots.mode }}"
+
+conversation:
+  intents: !include ../voice/house_mode_sentences.yaml

@@ -128,6 +128,7 @@ def _to_float(value, default=0.0):
                 return duration
     return default
 
+# ---------- public: shelves_flash ----------
 
 def _parse_rgbw_values(value):
     if value is None:
@@ -364,71 +365,26 @@ def _categorize_color_lights(lights_with_brightness):
 
 
 @service
-async def doorbell_ring_py(
-    players=None,
-    chime_url=None,
-    chime_vol=0.4,
-    chime_len=None,
-    flash_repeats=3,
-    flash_on_time_ms=250,
-    flash_brightness_pct=50,
-    flash_enabled=True,
-    guard_seconds=4,
+async def shelves_flash(
+    targets=None,
+    entity_id=None,
+    targets_group=None,
+    flashes: int = 4,
+    on_ms: int = 300,
+    off_ms: int = 250,
+    brightness: int | None = 230,
+    color: str = "red",
+    restore: bool = True
 ):
-    guard = max(0.0, _to_float(guard_seconds, default=0.0))
-    async with _doorbell_guard_lock:
-        global _doorbell_last_run
-        now = monotonic()
-        if guard > 0 and (now - _doorbell_last_run) < guard:
-            remaining = guard - (now - _doorbell_last_run)
-            log.info(
-                "doorbell_ring_py: guard active (%.2fs remaining); skipping", max(0.0, remaining)
-            )
-            return
-        _doorbell_last_run = now
+    """
+    Flash shelves; set red on color-capable lights. Snapshots & restores final state (including switches).
+    Accepts flexible targeting.
+    """
+    task.unique("shelves_flash", kill_me=True)
 
-    player_ids = _normalize_targets(players)
-    wait_s = _parse_duration(chime_len)
-    sonos_tasks = []
-    for player in player_ids:
-        sonos_tasks.append(
-            sonos_doorbell_chime_py(
-                player=player,
-                media_url=chime_url,
-                volume=chime_vol,
-                wait_s=wait_s,
-            )
-        )
-
-    flash_tasks = []
-    if _coerce_bool(flash_enabled):
-        flashes = 0
-        try:
-            flashes = int(float(flash_repeats))
-        except (TypeError, ValueError):
-            flashes = 0
-        if flashes > 0:
-            brightness = _pct_to_brightness(flash_brightness_pct)
-            if brightness > 0:
-                on_ms = int(max(50, float(flash_on_time_ms or 0)))
-                flash_tasks.append(
-                    shelves_flash(
-                        targets=_DEFAULT_SHELF_TARGETS,
-                        flashes=flashes,
-                        brightness=brightness,
-                        on_ms=on_ms,
-                        off_ms=on_ms,
-                    )
-                )
-
-    pending = []
-    if sonos_tasks:
-        pending.extend(sonos_tasks)
-    if flash_tasks:
-        pending.extend(flash_tasks)
-
-    if not pending:
-        log.warning("doorbell_ring_py: nothing to do (no players or flash targets)")
+    eids = _normalize_targets(targets=targets, entity_id=entity_id, targets_group=targets_group, **{})
+    if not eids:
+        log.warning("shelves_flash: no valid targets provided; nothing to do")
         return
 
     await asyncio.gather(*pending)
@@ -593,17 +549,12 @@ async def shelves_doorbell_flash_py(**kw):
 
 
 @service
-async def shelves_flash(
-    targets=None,
-    entity_id=None,
-    targets_group=None,
-    flashes: int = 3,
-    brightness: int = 230,
-    on_ms: int = 200,
-    off_ms: int = 200,
-    restore: bool = True,
-    color=None,
-    **kwargs,
+async def sonos_ding(
+    player: str,
+    media_url: str,
+    volume: float = 0.35,
+    ring_secs: float = 3.0,
+    with_group: bool = True
 ):
     raw_ids = []
     for source in (targets, entity_id, targets_group):
@@ -842,11 +793,12 @@ async def sonos_doorbell_chime_py(**kw):
 
 
 @service
-async def sonos_ding(
-    player: str | None = None,
-    media_url: str | None = None,
-    volume: float = 0.15,
-    wait_s: float | None = None,
+async def doorbell_ring(
+    # shelves args
+    entity_id=None, targets=None, targets_group=None,
+    flashes: int = 4, on_ms: int = 300, off_ms: int = 250, brightness: int | None = 230, color: str = "red", restore: bool = True,
+    # sonos args
+    player: str | None = None, media_url: str | None = None, volume: float = 0.35, ring_secs: float = 3.0, with_group: bool = True
 ):
     wait_value = _parse_duration(wait_s)
     log.info(
