@@ -158,17 +158,16 @@ def _preferred_color_payload_mode(modes, current_mode=None):
             return current_normalized
         if "rgb" in current_normalized:
             return "rgb"
-    if "rgbww" in normalized:
-        return "rgbww"
-    if "rgbw" in normalized:
-        return "rgbw"
-    if "rgb" in normalized:
-        return "rgb"
+    for preferred in ("rgbww", "rgbw", "rgb"):
+        for mode in normalized:
+            if mode == preferred:
+                return preferred
     for mode in normalized:
         if "rgb" in mode:
             return "rgb"
-    if "hs" in normalized or "xy" in normalized:
-        return "rgb"
+    for mode in normalized:
+        if mode in {"hs", "xy"}:
+            return "rgb"
     return "rgb"
 
 
