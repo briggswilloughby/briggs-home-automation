@@ -16,6 +16,17 @@ _DEFAULT_SHELF_TARGETS = [
     "light.shelf_4",
 ]
 
+_COLOR_NAME_MAP = {
+    "red": (255, 0, 0),
+    "blue": (0, 0, 255),
+    "green": (0, 255, 0),
+    "white": (255, 255, 255),
+    "warm_white": (0, 0, 0, 255),
+    "cool_white": (0, 0, 0, 0, 255),
+    "amber": (255, 191, 0),
+    "purple": (128, 0, 128),
+}
+
 _doorbell_guard_lock = asyncio.Lock()
 _doorbell_last_run = 0.0
 
@@ -95,7 +106,12 @@ def _pct_to_brightness(pct):
     pct_value = max(0.0, min(100.0, pct_value))
     if pct_value <= 0.0:
         return 0
-    return int(round(255 * (pct_value / 100.0))) or 1
+    scaled = int(round(255 * (pct_value / 100.0)))
+    if scaled <= 0:
+        return 1
+    if scaled > 255:
+        return 255
+    return scaled
 
 
 def _to_float(value, default=0.0):
@@ -573,8 +589,8 @@ async def shelves_apply_py(
 
 @service
 async def shelves_doorbell_flash_py(**kw):
-    # wrapper for existing YAML calls
     await shelves_flash(**kw)
+
 
 @service
 async def shelves_flash(
@@ -600,17 +616,15 @@ async def shelves_flash(
     if not raw_ids:
         raw_ids = ["light.shelves_all"]
 
-    # dedupe while preserving order
     ids = []
     seen_ids = set()
-    for candidate_id in raw_ids:
-        if candidate_id not in seen_ids:
-            ids.append(candidate_id)
-            seen_ids.add(candidate_id)
+    for candidate in raw_ids:
+        if candidate not in seen_ids:
+            ids.append(candidate)
+            seen_ids.add(candidate)
 
-    # clamp/convert inputs
-    flashes = max(1, int(flashes))
-    brightness = max(1, min(255, int(brightness)))
+    flashes_value = max(1, int(flashes))
+    brightness_value = max(1, min(255, int(brightness)))
     on_s = max(0.05, float(on_ms) / 1000.0)
     off_s = max(0.05, float(off_ms) / 1000.0)
 
@@ -620,7 +634,6 @@ async def shelves_flash(
     color_requested = color is not None
     rgb_color, color_label, extra_channels = _parse_color(color)
 
-    # ensure only one flasher runs at a time
     await task.unique("shelves_flash", kill_me=True)
 
     details = _collect_target_details(ids)
@@ -639,7 +652,6 @@ async def shelves_flash(
         log.warning(
             "shelves_flash: skipping unavailable targets: %s", ", ".join(missing)
         )
-
     if unsupported:
         log.warning(
             "shelves_flash: ignoring unsupported domains: %s", ", ".join(unsupported)
@@ -763,8 +775,37 @@ async def shelves_flash(
             service.call(
                 "light",
                 "turn_on",
-                entity_id=brightness_only_lights,
-                brightness=brightness,
+                entity_id=details["color_rgb"],
+                brightness=brightness_value,
+                rgb_color=_copy_rgb(rgb_color),
+            )
+        if details["color_rgbw"]:
+            payload = _copy_rgb(rgb_color)
+            payload.append(_extra_channel(extra_channels, 0))
+            service.call(
+                "light",
+                "turn_on",
+                entity_id=details["color_rgbw"],
+                brightness=brightness_value,
+                rgbw_color=payload,
+            )
+        if details["color_rgbww"]:
+            payload = _copy_rgb(rgb_color)
+            payload.append(_extra_channel(extra_channels, 0))
+            payload.append(_extra_channel(extra_channels, 1))
+            service.call(
+                "light",
+                "turn_on",
+                entity_id=details["color_rgbww"],
+                brightness=brightness_value,
+                rgbww_color=payload,
+            )
+        if brightness_only:
+            service.call(
+                "light",
+                "turn_on",
+                entity_id=brightness_only,
+                brightness=brightness_value,
             )
         if _has_items(lights_without_brightness):
             service.call("light", "turn_on", entity_id=lights_without_brightness)
@@ -781,7 +822,7 @@ async def shelves_flash(
             service.call("light", "turn_off", entity_id=all_lights)
         if _has_items(switches):
             service.call("switch", "turn_off", entity_id=switches)
-        if i < flashes - 1:
+        if index < flashes_value - 1:
             await task.sleep(off_s)
 
     if restore and restore_scene_entity:
@@ -794,10 +835,11 @@ async def shelves_flash(
                 err,
             )
 
+
 @service
 async def sonos_doorbell_chime_py(**kw):
-    # wrapper for existing YAML calls
     await sonos_ding(**kw)
+
 
 @service
 async def sonos_ding(
@@ -806,7 +848,6 @@ async def sonos_ding(
     volume: float = 0.15,
     wait_s: float | None = None,
 ):
-    # stub: swap in real chime logic when ready
     wait_value = _parse_duration(wait_s)
     log.info(
         "Stub sonos_ding: player=%s volume=%s media_url=%s wait_s=%s",
@@ -815,3 +856,4 @@ async def sonos_ding(
         media_url,
         wait_value,
     )
+
