@@ -145,25 +145,25 @@ script:
       - service: pyscript.doorbell_ring_py
         data: >-
           {{ {
-            'players': players,
-            'chime_url': chime_url,
-            'chime_vol': chime_vol,
-            'chime_len': chime_len,
-            'flash_repeats': flash_repeats,
-            'flash_on_time_ms': flash_on_time_ms,
-            'flash_brightness_pct': flash_brightness_pct,
-            'flash_enabled': flash_enabled,
-            'guard_seconds': guard_seconds
+            'players': (players | default(['media_player.kitchen','media_player.patio'], true)),
+            'chime_url': (chime_url | default('http://192.168.68.86:8123/local/dingdong.mp3', true)),
+            'chime_vol': (chime_vol | default(0.4, true)),
+            'chime_len': (chime_len | default('00:00:03', true)),
+            'flash_repeats': (flash_repeats | default(3, true)),
+            'flash_on_time_ms': (flash_on_time_ms | default(250, true)),
+            'flash_brightness_pct': (flash_brightness_pct | default(50, true)),
+            'flash_enabled': (flash_enabled | default(true, true)),
+            'guard_seconds': (guard_seconds | default(4, true))
           } | tojson | from_json }}
 
 automation:
   - alias: Ring → Ding-Dong (legacy YAML)
-    initial_state: 'off'
+    initial_state: 'on'                 # was 'off'
     mode: single
     max_exceeded: silent
     trigger:
       - platform: state
-        entity_id: event.front_door_ding   # state changes to a new timestamp each press
+        entity_id: event.front_door_ding
     variables:
       ring_attrs: "{{ trigger.to_state.attributes }}"
       ring_event_type: "{{ ring_attrs.get('event_type') }}"
@@ -185,6 +185,7 @@ automation:
              and ring_motion_clear }}
 
     action:
-      - service: pyscript.sonos_doorbell_chime_py
+      - service: script.doorbell_ring_combo
+        data: {}
       - delay: "00:00:04"        # absorb duplicates
   # Legacy guard: keep disabled while the Pyscript handler owns the event flow.

@@ -16,16 +16,6 @@ _DEFAULT_SHELF_TARGETS = [
     "light.shelf_4",
 ]
 
-_COLOR_NAME_MAP = {
-    "red": (255, 0, 0),
-    "blue": (0, 0, 255),
-    "green": (0, 255, 0),
-    "white": (255, 255, 255),
-    "warm_white": (0, 0, 0, 255),
-    "cool_white": (0, 0, 0, 0, 255),
-    "amber": (255, 191, 0),
-    "purple": (128, 0, 128),
-}
 
 _doorbell_guard_lock = asyncio.Lock()
 _doorbell_last_run = 0.0
@@ -127,6 +117,23 @@ def _to_float(value, default=0.0):
             if duration is not None:
                 return duration
     return default
+
+
+def _is_jinja_undefined(value):
+    try:
+        return value is not None and getattr(value.__class__, "__name__", "") == "LoggingUndefined"
+    except Exception:
+        return False
+
+
+def _safe_str(value, default=""):
+    """Return a plain string or default. Protects against Jinja LoggingUndefined."""
+    try:
+        if value is None or _is_jinja_undefined(value):
+            return default
+        return str(value)
+    except Exception:
+        return default
 
 
 def _parse_rgbw_values(value):
@@ -253,6 +260,125 @@ def _parse_color(color):
     return rgb, label, extras
 
 
+async def _try_service_call(domain, service_name, max_attempts=3, backoff=0.12, **kwargs):
+    """Best-effort wrapper around service.call with retries and small backoff.
+
+    Returns True if the call was attempted without raising an exception, False otherwise.
+    """
+    attempt = 0
+    while attempt < max_attempts:
+        try:
+            service.call(domain, service_name, **kwargs)
+            return True
+        except Exception:
+            attempt += 1
+            try:
+                await task.sleep(backoff * attempt)
+            except Exception:
+                # If sleeping fails, continue immediately to retry
+                pass
+    return False
+
+
+async def _schedule_background(coro_or_func, *args, **kwargs):
+    """Schedule a coroutine or coroutine-function to run in background.
+
+    This helper tries, in order:
+      - pyscript.task.start(func, ...)
+      - asyncio.create_task(coro)
+      - as a last resort, await the coro in a tiny background task using
+        task.start to avoid blocking the caller.
+
+    Returns True if the background work was scheduled, False otherwise.
+    """
+    # If a callable (function/coroutine-function) was passed, prefer calling
+    # task.start(func, *args, **kwargs) which fits pyscript's task.start API.
+    try:
+        if callable(coro_or_func):
+            try:
+                task.start(coro_or_func, *args, **kwargs)
+                return True
+            except Exception:
+                pass
+
+            # If task.start didn't work, create the coroutine and try asyncio
+            try:
+                coro = coro_or_func(*args, **kwargs)
+            except Exception:
+                return False
+        else:
+            # a coroutine object was provided
+            coro = coro_or_func
+    except Exception:
+        return False
+
+    # Try asyncio.create_task for coroutine objects
+    try:
+        asyncio.create_task(coro)
+        return True
+    except Exception:
+        pass
+
+    # Last resort: wrap the coroutine and try task.start on the wrapper
+    try:
+        async def _runner(c):
+            try:
+                await c
+            except Exception:
+                pass
+
+        starter = _runner(coro)
+        try:
+            task.start(starter)
+            return True
+        except Exception:
+            return False
+    except Exception:
+        return False
+
+
+@service
+async def doorbell_diagnostics_py(entity_id: str | None = None):
+    """Return a small diagnostics payload for a given entity (best-effort).
+
+    Call from Developer Tools → Services and inspect logs or persistent notification.
+    """
+    if not entity_id:
+        # nothing to do
+        return
+    try:
+        st = state.get(entity_id)
+    except Exception:
+        st = None
+    try:
+        attrs = state.getattr(entity_id) or {}
+    except Exception:
+        attrs = {}
+
+    diag = {
+        "entity_id": entity_id,
+        "state": st,
+        "brightness": attrs.get("brightness"),
+        "rgbw_color": attrs.get("rgbw_color") or attrs.get("rgb_color") or attrs.get("hs_color"),
+        "effect": attrs.get("effect"),
+        "effect_list": list(attrs.get("effect_list") or []),
+        "color_mode": attrs.get("color_mode"),
+    }
+
+    # Create a persistent notification so it's easy to read from the UI
+    try:
+        service.call(
+            "persistent_notification",
+            "create",
+            title=f"Doorbell diag: {entity_id}",
+            message=str(diag),
+        )
+    except Exception:
+        pass
+    # Also return the dict for programmatic use
+    return diag
+
+
 def _resolve_entities(entity_ids):
     lights_with_brightness = []
     lights_without_brightness = []
@@ -276,11 +402,7 @@ def _resolve_entities(entity_ids):
             try:
                 attrs = state.getattr(entity) or {}
             except Exception as err:  # pragma: no cover - defensive logging
-                log.warning(
-                    "shelves_apply: error retrieving attributes for %s: %s",
-                    entity,
-                    err,
-                )
+                # logging removed to avoid passing template/undefined objects
                 attrs = {}
 
             supported_features = attrs.get("supported_features", 0)
@@ -288,14 +410,13 @@ def _resolve_entities(entity_ids):
             normalized_modes = _normalize_color_modes(supported_color_modes)
 
             supports_brightness = False
-            if supported_features & 1:
-                supports_brightness = True
-            if any(
-                mode in {"brightness", "hs", "rgb", "rgbw", "rgbww", "xy"}
-                or "brightness" in mode
-                for mode in normalized_modes
-            ):
-                supports_brightness = True
+            for mode in normalized_modes:
+                if (
+                    mode in {"brightness", "hs", "rgb", "rgbw", "rgbww", "xy"}
+                    or "brightness" in mode
+                ):
+                    supports_brightness = True
+                    break
 
             if supports_brightness:
                 lights_with_brightness.append(entity)
@@ -324,11 +445,7 @@ def _categorize_color_lights(lights_with_brightness):
         try:
             entity_attributes = state.getattr(entity_id) or {}
         except Exception as err:  # pragma: no cover - defensive logging
-            log.warning(
-                "shelves_flash: error retrieving attributes for %s: %s",
-                entity_id,
-                err,
-            )
+            # logging removed to avoid passing template/undefined objects
             entity_attributes = {}
 
         supported_color_modes = entity_attributes.get("supported_color_modes")
@@ -365,9 +482,9 @@ def _categorize_color_lights(lights_with_brightness):
 
 @service
 async def doorbell_ring_py(
-    players=None,
+    players="media_player.kitchen",  # Default to kitchen
     chime_url=None,
-    chime_vol=0.4,
+    chime_vol=0.2,
     chime_len=None,
     flash_repeats=3,
     flash_on_time_ms=250,
@@ -380,58 +497,50 @@ async def doorbell_ring_py(
         global _doorbell_last_run
         now = monotonic()
         if guard > 0 and (now - _doorbell_last_run) < guard:
-            remaining = guard - (now - _doorbell_last_run)
-            log.info(
-                "doorbell_ring_py: guard active (%.2fs remaining); skipping", max(0.0, remaining)
-            )
             return
         _doorbell_last_run = now
 
+    # Use Kitchen as default if no players specified
+    if not players:
+        players = "media_player.kitchen"  # Set your Kitchen Sonos entity ID here
     player_ids = _normalize_targets(players)
+    
     wait_s = _parse_duration(chime_len)
-    sonos_tasks = []
-    for player in player_ids:
-        sonos_tasks.append(
-            sonos_doorbell_chime_py(
-                player=player,
-                media_url=chime_url,
-                volume=chime_vol,
-                wait_s=wait_s,
-            )
-        )
-
-    flash_tasks = []
+    
+    # Build task list
+    tasks = []
+    
+    # Add flash task if enabled
     if _coerce_bool(flash_enabled):
-        flashes = 0
-        try:
-            flashes = int(float(flash_repeats))
-        except (TypeError, ValueError):
-            flashes = 0
+        flashes = max(0, int(float(flash_repeats or 0)))
         if flashes > 0:
             brightness = _pct_to_brightness(flash_brightness_pct)
             if brightness > 0:
                 on_ms = int(max(50, float(flash_on_time_ms or 0)))
-                flash_tasks.append(
-                    shelves_flash(
-                        targets=_DEFAULT_SHELF_TARGETS,
-                        flashes=flashes,
-                        brightness=brightness,
-                        on_ms=on_ms,
-                        off_ms=on_ms,
-                    )
-                )
+                tasks.append(shelves_flash(
+                    targets=_DEFAULT_SHELF_TARGETS,
+                    flashes=flashes,
+                    brightness=brightness,
+                    on_ms=on_ms,
+                    off_ms=on_ms,
+                ))
 
-    pending = []
-    if sonos_tasks:
-        pending.extend(sonos_tasks)
-    if flash_tasks:
-        pending.extend(flash_tasks)
+    # Add Sonos chime tasks
+    for player in player_ids:
+        tasks.append(sonos_doorbell_chime_py(
+            player=player,
+            media_url=chime_url,
+            volume=chime_vol,
+            wait_s=wait_s,
+        ))
 
-    if not pending:
-        log.warning("doorbell_ring_py: nothing to do (no players or flash targets)")
-        return
-
-    await asyncio.gather(*pending)
+    # Execute all tasks concurrently using task.start (fire-and-forget)
+    if tasks:
+        try:
+            for task_coro in tasks:
+                task.start(task_coro)
+        except Exception:
+            pass
 
 
 @service
@@ -445,62 +554,25 @@ async def shelves_apply_py(
     color=None,
     **kwargs,
 ):
+    # Combine all target sources
     raw_ids = []
     for source in (targets, entity_id, group):
         raw_ids.extend(_normalize_targets(source))
-
     for key, value in kwargs.items():
         if isinstance(key, str) and key.startswith(("light.", "switch.", "group.")):
             raw_ids.append(key)
         elif key == "targets":
             raw_ids.extend(_normalize_targets(value))
-
     if not raw_ids:
         raw_ids = list(_DEFAULT_SHELF_TARGETS)
-
+    # Deduplicate
     ids = []
     seen_ids = set()
     for candidate_id in raw_ids:
         if candidate_id not in seen_ids:
             ids.append(candidate_id)
             seen_ids.add(candidate_id)
-
-    (
-        lights_with_brightness,
-        lights_without_brightness,
-        switches,
-        missing,
-        unsupported,
-    ) = _resolve_entities(ids)
-
-    if missing:
-        log.warning(
-            "shelves_apply_py: skipping unavailable targets: %s", ", ".join(missing)
-        )
-
-    if unsupported:
-        log.warning(
-            "shelves_apply_py: ignoring unsupported domains: %s", ", ".join(unsupported)
-        )
-
-    (
-        color_capable_lights,
-        brightness_only_lights,
-        color_payload_modes,
-    ) = _categorize_color_lights(lights_with_brightness)
-
-    if not (
-        color_capable_lights
-        or brightness_only_lights
-        or lights_without_brightness
-        or switches
-    ):
-        log.error("shelves_apply_py: no usable targets after filtering")
-        raise ValueError("shelves_apply_py: no usable targets")
-
-    brightness_pct_value = max(1, min(100, int(brightness_pct or 0)))
-    transition_value = max(0.0, float(transition or 0.0))
-
+    # Parse color
     if color is not None:
         rgb_color, color_label, extra_channels = _parse_color(color)
     else:
@@ -508,84 +580,19 @@ async def shelves_apply_py(
         rgb_color = tuple(parsed_rgbw[:3])
         extra_channels = parsed_rgbw[3:]
         color_label = f"rgbw {parsed_rgbw[:4]}"
-
-    log.info(
-        "shelves_apply_py: applying %s (brightness_pct=%s transition=%s) to %s",
-        color_label,
-        brightness_pct_value,
-        transition_value,
-        ", ".join(ids),
+    brightness_pct_value = max(1, min(100, int(brightness_pct or 0)))
+    transition_value = max(0.0, float(transition or 0.0))
+    # Always treat as RGBW
+    rgbw_color = list(rgb_color) + [extra_channels[0] if len(extra_channels) > 0 else 0]
+    service.call(
+        "light",
+        "turn_on",
+        entity_id=ids,
+        brightness=round(255 * (brightness_pct_value / 100.0)),
+        transition=transition_value,
+        rgbw_color=rgbw_color,
     )
 
-    if color_capable_lights:
-        rgb_payload = []
-        rgbw_payload = []
-        rgbww_payload = []
-        for entity_id in color_capable_lights:
-            mode = color_payload_modes.get(entity_id, "rgb")
-            if mode == "rgbww":
-                rgbww_payload.append(entity_id)
-            elif mode == "rgbw":
-                rgbw_payload.append(entity_id)
-            else:
-                rgb_payload.append(entity_id)
-
-        if rgb_payload:
-            service.call(
-                "light",
-                "turn_on",
-                entity_id=rgb_payload,
-                brightness_pct=brightness_pct_value,
-                transition=transition_value,
-                rgb_color=list(rgb_color),
-            )
-
-        if rgbw_payload:
-            rgbw_color = list(rgb_color) + [
-                extra_channels[0] if len(extra_channels) > 0 else 0
-            ]
-            service.call(
-                "light",
-                "turn_on",
-                entity_id=rgbw_payload,
-                brightness_pct=brightness_pct_value,
-                transition=transition_value,
-                rgbw_color=rgbw_color,
-            )
-
-        if rgbww_payload:
-            rgbww_color = list(rgb_color) + [
-                extra_channels[0] if len(extra_channels) > 0 else 0,
-                extra_channels[1] if len(extra_channels) > 1 else 0,
-            ]
-            service.call(
-                "light",
-                "turn_on",
-                entity_id=rgbww_payload,
-                brightness_pct=brightness_pct_value,
-                transition=transition_value,
-                rgbww_color=rgbww_color,
-            )
-
-    if brightness_only_lights:
-        service.call(
-            "light",
-            "turn_on",
-            entity_id=brightness_only_lights,
-            brightness_pct=brightness_pct_value,
-            transition=transition_value,
-        )
-
-    if lights_without_brightness:
-        service.call(
-            "light",
-            "turn_on",
-            entity_id=lights_without_brightness,
-            transition=transition_value,
-        )
-
-    if switches:
-        service.call("switch", "turn_on", entity_id=switches)
 
 @service
 async def shelves_doorbell_flash_py(**kw):
@@ -605,17 +612,17 @@ async def shelves_flash(
     color=None,
     **kwargs,
 ):
+    # Combine all target sources
     raw_ids = []
     for source in (targets, entity_id, targets_group):
         raw_ids.extend(_normalize_targets(source))
-
     for key in kwargs:
         if isinstance(key, str) and key.startswith(("light.", "switch.", "group.")):
             raw_ids.append(key)
-
     if not raw_ids:
-        raw_ids = ["light.shelves_all"]
-
+        raw_ids = list(_DEFAULT_SHELF_TARGETS)
+    
+    # Deduplicate
     ids = []
     seen_ids = set()
     for candidate in raw_ids:
@@ -623,237 +630,135 @@ async def shelves_flash(
             ids.append(candidate)
             seen_ids.add(candidate)
 
+    # Resolve entities and fail soft if nothing usable
+    lights_with_brightness, lights_without_brightness, switches, missing, unsupported = _resolve_entities(ids)
+    usable_ids = list(lights_with_brightness) + list(lights_without_brightness)
+    if not usable_ids:
+        try:
+            log.warning(f"shelves_flash: no usable light targets resolved from {ids}")
+        except Exception:
+            pass
+        return
+
     flashes_value = max(1, int(flashes))
     brightness_value = max(1, min(255, int(brightness)))
     on_s = max(0.05, float(on_ms) / 1000.0)
     off_s = max(0.05, float(off_ms) / 1000.0)
-
+    
     if color is None:
         color = kwargs.get("color")
-
-    color_requested = color is not None
     rgb_color, color_label, extra_channels = _parse_color(color)
 
+    rgbw_color = list(rgb_color) + [extra_channels[0] if len(extra_channels) > 0 else 0]
+    
     await task.unique("shelves_flash", kill_me=True)
-
-    details = _collect_target_details(ids)
-
-    missing = details["missing"]
-    unsupported = details["unsupported"]
-    color_rgb = details["color_rgb"]
-    color_rgbw = details["color_rgbw"]
-    color_rgbww = details["color_rgbww"]
-    brightness_only_lights = details["brightness"]
-    lights_without_brightness = details["no_brightness"]
-    switches = details["switches"]
-    ordered_lights = details["ordered_lights"]
-
-    if missing:
-        log.warning(
-            "shelves_flash: skipping unavailable targets: %s", ", ".join(missing)
-        )
-    if unsupported:
-        log.warning(
-            "shelves_flash: ignoring unsupported domains: %s", ", ".join(unsupported)
-        )
-
-    (
-        color_capable_lights,
-        brightness_only_lights,
-        color_payload_modes,
-    ) = _categorize_color_lights(lights_with_brightness)
-
-    available = []
-    _extend_list(available, color_capable_lights)
-    _extend_list(available, brightness_only_lights)
-    _extend_list(available, lights_without_brightness)
-    _extend_list(available, switches)
-
-    rgb_payload = []
-    rgbw_payload = []
-    rgbww_payload = []
-
-    if _has_items(color_capable_lights):
-        for entity_id in color_capable_lights:
-            mode = color_payload_modes.get(entity_id, "rgb")
-            if mode == "rgbww":
-                rgbww_payload.append(entity_id)
-            elif mode == "rgbw":
-                rgbw_payload.append(entity_id)
-            else:
-                rgb_payload.append(entity_id)
-
-    if color_requested:
-        unsupported_color_entities = (
-            brightness_only_lights
-            + lights_without_brightness
-            + switches
-        )
-        if not _has_items(color_capable_lights):
-            log.warning(
-                "shelves_flash: color '%s' requested but no color-capable lights available; continuing without color",
-                color_label,
-            )
-        elif _has_items(unsupported_color_entities):
-            log.info(
-                "shelves_flash: color '%s' requested but unsupported by: %s",
-                color_label,
-                ", ".join(unsupported_color_entities),
-            )
-
-        if _has_items(color_capable_lights):
-            for entity_id in color_capable_lights:
-                mode = color_payload_modes.get(entity_id, "rgb")
-                payload_key = "rgb_color"
-                payload = _copy_rgb(rgb_color)
-                if mode == "rgbww":
-                    payload_key = "rgbww_color"
-                    payload.append(_extra_channel(extra_channels, 0))
-                    payload.append(_extra_channel(extra_channels, 1))
-                elif mode == "rgbw":
-                    payload_key = "rgbw_color"
-                    payload.append(_extra_channel(extra_channels, 0))
-                log.info(
-                    "shelves_flash: using %s %s for %s",
-                    payload_key,
-                    payload,
-                    entity_id,
-                )
-
-    if not _has_items(available):
-        log.error("shelves_flash: no usable targets after filtering unavailable entities")
-        raise ValueError("shelves_flash: no usable targets")
-
-    restore_scene_entity = None
-    if restore:
-        scene_slug = f"shelves_flash_restore_{int(time.time() * 1000)}"
+    
+    # 1. CAPTURE ORIGINAL STATES (per entity)
+    original_states = {}
+    for entity in usable_ids:
         try:
-            service.call(
-                "scene",
-                "create",
-                scene_id=scene_slug,
-                snapshot_entities=available,
-            )
-            restore_scene_entity = f"scene.{scene_slug}"
-        except Exception as err:  # pragma: no cover - defensive logging
-            log.error("shelves_flash: failed to snapshot state for restore: %s", err)
+            st = state.get(entity)
+            attrs = state.getattr(entity) or {}
+            original_states[entity] = {
+                'state': st,
+                'brightness': attrs.get('brightness'),
+                'rgbw_color': attrs.get('rgbw_color'),
+                'rgb_color': attrs.get('rgb_color'),
+                'effect': attrs.get('effect')
+            }
+        except Exception:
+            original_states[entity] = {'state': 'off'}
 
-    for i in range(flashes):
-        if _has_items(color_capable_lights):
-            if _has_items(rgb_payload):
-                service.call(
-                    "light",
-                    "turn_on",
-                    entity_id=rgb_payload,
-                    brightness=brightness,
-                    rgb_color=_copy_rgb(rgb_color),
-                )
-
-            if _has_items(rgbw_payload):
-                rgbw_color = _copy_rgb(rgb_color)
-                rgbw_color.append(_extra_channel(extra_channels, 0))
-                service.call(
-                    "light",
-                    "turn_on",
-                    entity_id=rgbw_payload,
-                    brightness=brightness,
-                    rgbw_color=rgbw_color,
-                )
-
-            if _has_items(rgbww_payload):
-                rgbww_color = _copy_rgb(rgb_color)
-                rgbww_color.append(_extra_channel(extra_channels, 0))
-                rgbww_color.append(_extra_channel(extra_channels, 1))
-                service.call(
-                    "light",
-                    "turn_on",
-                    entity_id=rgbww_payload,
-                    brightness=brightness,
-                    rgbww_color=rgbww_color,
-                )
-        if _has_items(brightness_only_lights):
-            service.call(
-                "light",
-                "turn_on",
-                entity_id=details["color_rgb"],
-                brightness=brightness_value,
-                rgb_color=_copy_rgb(rgb_color),
-            )
-        if details["color_rgbw"]:
-            payload = _copy_rgb(rgb_color)
-            payload.append(_extra_channel(extra_channels, 0))
-            service.call(
-                "light",
-                "turn_on",
-                entity_id=details["color_rgbw"],
-                brightness=brightness_value,
-                rgbw_color=payload,
-            )
-        if details["color_rgbww"]:
-            payload = _copy_rgb(rgb_color)
-            payload.append(_extra_channel(extra_channels, 0))
-            payload.append(_extra_channel(extra_channels, 1))
-            service.call(
-                "light",
-                "turn_on",
-                entity_id=details["color_rgbww"],
-                brightness=brightness_value,
-                rgbww_color=payload,
-            )
-        if brightness_only:
-            service.call(
-                "light",
-                "turn_on",
-                entity_id=brightness_only,
-                brightness=brightness_value,
-            )
-        if _has_items(lights_without_brightness):
-            service.call("light", "turn_on", entity_id=lights_without_brightness)
-        if _has_items(switches):
-            service.call("switch", "turn_on", entity_id=switches)
-
+    # 2. MANUAL FLASH SEQUENCE (no device effects)
+    for i in range(flashes_value):
+        try:
+            log.info(f"shelves_flash: flash {i+1}/{flashes_value}")
+        except Exception:
+            pass
+            
+        # FLASH ON - explicit RGBW with no effects
+        service.call(
+            "light",
+            "turn_on",
+            entity_id=usable_ids,
+            brightness=brightness_value,
+            rgbw_color=rgbw_color,
+            effect="none"  # Explicitly disable effects
+        )
         await task.sleep(on_s)
-
-        all_lights = []
-        _extend_list(all_lights, color_capable_lights)
-        _extend_list(all_lights, brightness_only_lights)
-        _extend_list(all_lights, lights_without_brightness)
-        if _has_items(all_lights):
-            service.call("light", "turn_off", entity_id=all_lights)
-        if _has_items(switches):
-            service.call("switch", "turn_off", entity_id=switches)
-        if index < flashes_value - 1:
+        
+        # FLASH OFF
+        service.call(
+            "light",
+            "turn_off",
+            entity_id=usable_ids
+        )
+        
+        # Don't sleep after final flash
+        if i < flashes_value - 1:
             await task.sleep(off_s)
 
-    if restore and restore_scene_entity:
+    # 3. FORCED RESTORATION SEQUENCE
+    if restore:
+        # Step 1: Force all OFF to clear any lingering effects
+        service.call("light", "turn_off", entity_id=usable_ids)
+        await task.sleep(0.5)  # Let Shelly process
+        
+        # Step 2: Restore each light individually
+        for entity, orig_state in original_states.items():
+            try:
+                if orig_state['state'] == 'on':
+                    service_data = {
+                        'entity_id': entity,
+                        'effect': 'none'  # Force no effects
+                    }
+                    
+                    # Restore brightness
+                    if orig_state.get('brightness'):
+                        service_data['brightness'] = orig_state['brightness']
+                    
+                    # Restore color (prefer rgbw_color)
+                    if orig_state.get('rgbw_color'):
+                        service_data['rgbw_color'] = orig_state['rgbw_color']
+                    elif orig_state.get('rgb_color'):
+                        service_data['rgb_color'] = orig_state['rgb_color']
+                    
+                    service.call("light", "turn_on", **service_data)
+                    await task.sleep(0.15)  # Brief pause between lights
+                # If original was 'off', leave it off (already handled above)
+            except Exception:
+                pass  # Best effort restoration
+
+
+@service
+async def sonos_doorbell_chime_py(player=None, media_url=None, volume=None, wait_s=None):
+    """Direct Sonos chime call (bypasses script.sonos_chime)"""
+    if not player:
+        return
+
+    uri = media_url or "http://192.168.68.86:8123/local/dingdong.mp3"
+
+    try:
+        log.info(f"sonos_doorbell_chime_py: playing {uri} on {player}")
+        
+        # Set volume if specified
+        if volume is not None:
+            service.call("media_player", "volume_set", 
+                        entity_id=player, 
+                        volume_level=float(volume))
+            await task.sleep(0.2)
+        
+        # Play the chime
+        service.call("media_player", "play_media", 
+                    entity_id=player, 
+                    media_content_id=uri, 
+                    media_content_type="music")
+        
+        log.info(f"sonos_doorbell_chime_py: play_media called successfully")
+        
+    except Exception as e:
         try:
-            service.call("scene", "turn_on", entity_id=restore_scene_entity)
-        except Exception as err:  # pragma: no cover - defensive logging
-            log.error(
-                "shelves_flash: failed to restore snapshot scene %s: %s",
-                restore_scene_entity,
-                err,
-            )
-
-
-@service
-async def sonos_doorbell_chime_py(**kw):
-    await sonos_ding(**kw)
-
-
-@service
-async def sonos_ding(
-    player: str | None = None,
-    media_url: str | None = None,
-    volume: float = 0.15,
-    wait_s: float | None = None,
-):
-    wait_value = _parse_duration(wait_s)
-    log.info(
-        "Stub sonos_ding: player=%s volume=%s media_url=%s wait_s=%s",
-        player,
-        volume,
-        media_url,
-        wait_value,
-    )
+            log.error(f"sonos_doorbell_chime_py failed: {e}")
+        except Exception:
+            pass
 

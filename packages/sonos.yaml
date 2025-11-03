@@ -159,6 +159,47 @@ script:
                       media_content_id: "{{ uri }}"
                       media_content_type: music
 
+  sonos_chime:
+    alias: "Sonos - Chime (snapshot/play/restore)"
+    mode: restart
+    fields:
+      player:
+        description: media_player.* to chime on
+      media_url:
+        description: Media Source URI or URL (default to local dingdong)
+      volume:
+        description: Optional temporary volume_level (0.0..1.0)
+      wait_s:
+        description: Optional time to wait before restore (seconds)
+    sequence:
+      - variables:
+          _player: "{{ player }}"
+          _uri: >
+            {{ media_url if (media_url is defined and media_url|string|length > 0)
+               else 'media-source://media_source/local/dingdong.mp3' }}
+          _wait: >
+            {{ (wait_s | default(2.0)) | float(2.0) }}
+      - condition: template
+        value_template: "{{ _player is not none and _player | string | length > 0 }}"
+      - service: script.sonos_snapshot
+        data:
+          players: "{{ _player }}"
+      - choose:
+          - conditions: "{{ volume is defined }}"
+            sequence:
+              - service: media_player.volume_set
+                target: { entity_id: "{{ _player }}" }
+                data: { volume_level: "{{ volume | float }}" }
+      - service: media_player.play_media
+        target: { entity_id: "{{ _player }}" }
+        data:
+          media_content_id: "{{ _uri }}"
+          media_content_type: music
+      - delay: { seconds: "{{ _wait }}" }
+      - service: script.sonos_restore_snapshot
+        data:
+          players: "{{ _player }}"
+
   sonos_relative_volume:
     alias: "Sonos - Relative Volume"
     mode: single

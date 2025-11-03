@@ -393,6 +393,7 @@ automation:
     mode: single
     trigger: [{ platform: homeassistant, event: start }]
     action:
+      - delay: '00:00:10'
       - choose:
           - conditions: "{{ states('input_select.shelf_mode') == 'tv' }}"
             sequence: [{ service: script.shelf_set_mode_tv }]
