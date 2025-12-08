@@ -1,0 +1,697 @@
+# =============================================================================
+# PACKAGE: sonos.yaml
+# PURPOSE: Sonos helpers and presets (Family Room, Kitchen, Bar, Patio, Roam2)
+# FIX: Keep repeat.for_each loops templated as strings so validators accept per-player runs.
+# NOTES:
+#   - YAML uses `service:` for calls (UI label "Actions" is just naming).
+#   - Grouping now uses generic media_player.join/unjoin (current HA behavior).
+#   - Snapshots/restores still use sonos.snapshot/sonos.restore with groups.
+#   - Move: promote DEST to coordinator, unjoin SOURCE, then join SOURCE→DEST.
+# LEARNING: Home Assistant validators expect repeat.for_each templates to render plain strings.
+# =============================================================================
+homeassistant:
+  customize:
+    script.move_tv_to_kitchen:
+      google_assistant: true
+      google_assistant_name: "TV in Kitchen"
+    script.unjoin_kitchen:
+      google_assistant: true
+      google_assistant_name: "Unjoin Kitchen"
+script:
+
+  # ---------- GENERIC HELPERS ----------
+  sonos_snapshot:
+    alias: "Sonos - Snapshot"
+    mode: restart
+    fields:
+      players:
+        description: One or more media_player.*
+    sequence:
+      - variables:
+          player_list: |
+            {% set candidate = players | default([], true) %}
+            {% if candidate is mapping and 'entity_id' in candidate %}
+              {% set candidate = candidate.entity_id %}
+            {% endif %}
+            {% if candidate is none %}
+              {% set items = [] %}
+            {% elif candidate is iterable and candidate is not string %}
+              {% set items = candidate | list %}
+            {% else %}
+              {% set items = [candidate] %}
+            {% endif %}
+            {% set ns = namespace(result=[]) %}
+            {% for item in items %}
+              {% if item is mapping and 'entity_id' in item %}
+                {% set inner = item.entity_id %}
+                {% if inner is iterable and inner is not string %}
+                  {% for entity in inner %}
+                    {% if entity is not none %}
+                      {% set ns.result = ns.result + [(entity | string)] %}
+                    {% endif %}
+                  {% endfor %}
+                {% elif inner is not none %}
+                  {% set ns.result = ns.result + [(inner | string)] %}
+                {% endif %}
+              {% elif item is iterable and item is not string %}
+                {% for entity in item %}
+                  {% if entity is not none %}
+                    {% set ns.result = ns.result + [(entity | string)] %}
+                  {% endif %}
+                {% endfor %}
+              {% elif item is not none %}
+                {% set ns.result = ns.result + [(item | string)] %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.result | list }}
+      - condition: template
+        value_template: "{{ player_list | length > 0 }}"
+      - service: sonos.snapshot
+        target:
+          entity_id: "{{ player_list }}"
+        data:
+          with_group: true
+
+  sonos_restore_snapshot:
+    alias: "Sonos - Restore Snapshot"
+    mode: restart
+    fields:
+      players:
+        description: One or more media_player.*
+    sequence:
+      - variables:
+          player_list: |
+            {% set candidate = players | default([], true) %}
+            {% if candidate is mapping and 'entity_id' in candidate %}
+              {% set candidate = candidate.entity_id %}
+            {% endif %}
+            {% if candidate is none %}
+              {% set items = [] %}
+            {% elif candidate is iterable and candidate is not string %}
+              {% set items = candidate | list %}
+            {% else %}
+              {% set items = [candidate] %}
+            {% endif %}
+            {% set ns = namespace(result=[]) %}
+            {% for item in items %}
+              {% if item is mapping and 'entity_id' in item %}
+                {% set inner = item.entity_id %}
+                {% if inner is iterable and inner is not string %}
+                  {% for entity in inner %}
+                    {% if entity is not none %}
+                      {% set ns.result = ns.result + [(entity | string)] %}
+                    {% endif %}
+                  {% endfor %}
+                {% elif inner is not none %}
+                  {% set ns.result = ns.result + [(inner | string)] %}
+                {% endif %}
+              {% elif item is iterable and item is not string %}
+                {% for entity in item %}
+                  {% if entity is not none %}
+                    {% set ns.result = ns.result + [(entity | string)] %}
+                  {% endif %}
+                {% endfor %}
+              {% elif item is not none %}
+                {% set ns.result = ns.result + [(item | string)] %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.result | list }}
+      - condition: template
+        value_template: "{{ player_list | length > 0 }}"
+      - service: sonos.restore
+        target:
+          entity_id: "{{ player_list }}"
+        data:
+          with_group: true
+
+  sonos_play:
+    alias: "Sonos - Play Favorite/URI"
+    mode: restart
+    fields:
+      player:
+        example: media_player.family_room
+      favorite:
+        description: Sonos favorite name (optional)
+      uri:
+        description: Direct stream/Spotify URI (optional)
+      volume:
+        description: Optional volume_level 0.0..1.0
+    sequence:
+      - choose:
+          - conditions: "{{ volume is defined }}"
+            sequence:
+              - service: media_player.volume_set
+                target: { entity_id: "{{ player }}" }
+                data: { volume_level: "{{ volume|float }}" }
+      - choose:
+          - conditions: "{{ favorite is defined and favorite|length > 0 }}"
+            sequence:
+              - service: media_player.select_source
+                target: { entity_id: "{{ player }}" }
+                data: { source: "{{ favorite }}" }
+        default:
+          - choose:
+              - conditions: "{{ uri is defined and uri|length > 0 }}"
+                sequence:
+                  - service: media_player.play_media
+                    target: { entity_id: "{{ player }}" }
+                    data:
+                      media_content_id: "{{ uri }}"
+                      media_content_type: music
+
+  sonos_chime:
+    alias: "Sonos - Chime (snapshot/play/restore)"
+    mode: restart
+    fields:
+      player:
+        description: media_player.* to chime on
+      media_url:
+        description: Media Source URI or URL (default to local dingdong)
+      volume:
+        description: Optional temporary volume_level (0.0..1.0)
+      wait_s:
+        description: Optional time to wait before restore (seconds)
+    sequence:
+      - variables:
+          _player: "{{ player }}"
+          _uri: >
+            {{ media_url if (media_url is defined and media_url|string|length > 0)
+               else 'media-source://media_source/local/dingdong.mp3' }}
+          _wait: >
+            {{ (wait_s | default(2.0)) | float(2.0) }}
+      - condition: template
+        value_template: "{{ _player is not none and _player | string | length > 0 }}"
+      - service: script.sonos_snapshot
+        data:
+          players: "{{ _player }}"
+      - choose:
+          - conditions: "{{ volume is defined }}"
+            sequence:
+              - service: media_player.volume_set
+                target: { entity_id: "{{ _player }}" }
+                data: { volume_level: "{{ volume | float }}" }
+      - service: media_player.play_media
+        target: { entity_id: "{{ _player }}" }
+        data:
+          media_content_id: "{{ _uri }}"
+          media_content_type: music
+      - delay: { seconds: "{{ _wait }}" }
+      - service: script.sonos_restore_snapshot
+        data:
+          players: "{{ _player }}"
+
+  sonos_relative_volume:
+    alias: "Sonos - Relative Volume"
+    mode: single
+    fields:
+      player:
+        example: media_player.family_room
+      delta:
+        description: "+/- change (0.07 or 7 for 7%)"
+      step_size:
+        description: "Custom step size (overrides default 7%)"
+        example: 3
+        default: 7
+    sequence:
+      - variables:
+          cur: "{{ state_attr(player,'volume_level')|float(0.3) }}"
+          step: >
+            {% set d = delta %}
+            {% set custom_step = step_size | default(7) %}
+            {% if d is number %}{{ d if d <= 1 else (d/100) }}
+            {% else %}{{ (d|float(custom_step))/100 }}{% endif %}
+          newv: "{{ [1, [0, cur + step]|max ]|min }}"
+      - service: media_player.volume_set
+        target: { entity_id: "{{ player }}" }
+        data: { volume_level: "{{ newv }}" }
+
+  sonos_raise_if_below:
+    alias: "Sonos - Raise If Below"
+    mode: parallel
+    fields:
+      player:
+        description: media_player.* to guard
+      min_level:
+        description: Minimum volume (0.0..1.0)
+    sequence:
+      - variables:
+          target_player: "{{ player }}"
+          minimum: "{{ min_level | float(0) }}"
+          current: "{{ state_attr(target_player, 'volume_level') | float(0) }}"
+      - condition: template
+        value_template: "{{ target_player is not none and current < minimum }}"
+      - service: media_player.volume_set
+        target:
+          entity_id: "{{ target_player }}"
+        data:
+          volume_level: "{{ minimum }}"
+
+  sonos_move:
+    alias: "Sonos - Move Playback"
+    mode: restart
+    fields:
+      source:
+        description: media_player.* (current playback)
+      dest:
+        description: media_player.* (destination; becomes coordinator)
+      settle_ms:
+        description: Small settle delay (ms) between steps
+        default: 400
+    sequence:
+      - variables:
+          _source: "{{ source }}"
+          _dest: "{{ dest }}"
+          _settle: "{{ (settle_ms | default(400) | int) / 1000 }}"
+      # 1) Promote DEST to its own coordinator (safe if already solo)
+      - service: media_player.unjoin
+        target: { entity_id: "{{ _dest }}" }
+      - delay: { seconds: "{{ _settle }}" }
+      # 2) Unjoin SOURCE from any prior group
+      - service: media_player.unjoin
+        target: { entity_id: "{{ _source }}" }
+      - delay: { seconds: "{{ _settle }}" }
+      # 3) Join SOURCE into DEST's group (DEST remains coordinator)
+      - service: media_player.join
+        target: { entity_id: "{{ _dest }}" }     # coordinator/master
+        data:
+          group_members:
+            - "{{ _source }}"                    # member to add
+      - wait_template: >
+          {{ state_attr(_dest, 'group_members') is defined
+             and _source in state_attr(_dest, 'group_members') }}
+        timeout: "00:00:03"
+        continue_on_timeout: true
+
+  sonos_group_with:
+    alias: "Sonos - Group With"
+    mode: restart
+    fields:
+      coordinator:
+        example: media_player.family_room
+      members:
+        description: List of media_player.* to add
+    sequence:
+      - variables:
+          members_list: |
+            {% set raw = members | default([], true) %}
+            {% if raw is mapping and 'entity_id' in raw %}
+              {% set raw = raw.entity_id %}
+            {% endif %}
+            {% if raw is none %}
+              {% set items = [] %}
+            {% elif raw is iterable and raw is not string %}
+              {% set items = raw | list %}
+            {% else %}
+              {% set items = [raw] %}
+            {% endif %}
+            {% set ns = namespace(result=[]) %}
+            {% for item in items %}
+              {% if item is mapping and 'entity_id' in item %}
+                {% set inner = item.entity_id %}
+                {% if inner is iterable and inner is not string %}
+                  {% for entity in inner %}
+                    {% if entity is not none %}
+                      {% set ns.result = ns.result + [(entity | string)] %}
+                    {% endif %}
+                  {% endfor %}
+                {% elif inner is not none %}
+                  {% set ns.result = ns.result + [(inner | string)] %}
+                {% endif %}
+              {% elif item is iterable and item is not string %}
+                {% for entity in item %}
+                  {% if entity is not none %}
+                    {% set ns.result = ns.result + [(entity | string)] %}
+                  {% endif %}
+                {% endfor %}
+              {% elif item is not none %}
+                {% set ns.result = ns.result + [(item | string)] %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.result | list }}
+      - choose:
+          - conditions: "{{ members_list | length > 0 }}"
+            sequence:
+              - repeat:
+                  for_each: "{{ members_list }}"
+                  sequence:
+                    - service: media_player.join
+                      target:
+                        entity_id: "{{ coordinator }}"            # coordinator/master
+                      data:
+                        group_members:
+                          - "{{ repeat.item }}"            # member to add
+              - wait_template: >
+                  {{ state_attr(coordinator, 'group_members') is defined
+                     and (members_list | select('in', state_attr(coordinator, 'group_members')) | list | length)
+                         == (members_list | length) }}
+                timeout: "00:00:03"
+                continue_on_timeout: true
+
+  sonos_ungroup_all:
+    alias: "Sonos - Ungroup All"
+    mode: parallel
+    sequence:
+      - service: media_player.unjoin
+        target:
+          entity_id:
+            - media_player.family_room
+            - media_player.kitchen
+            - media_player.bar
+            - media_player.patio
+            - media_player.roam2
+
+  sonos_mute_all:
+    alias: "Sonos - Mute All"
+    mode: parallel
+    sequence:
+      - service: media_player.volume_mute
+        target:
+          entity_id:
+            - media_player.family_room
+            - media_player.kitchen
+            - media_player.bar
+            - media_player.patio
+            - media_player.roam2
+        data: { is_volume_muted: true }
+
+  sonos_unmute_all:
+    alias: "Sonos - Unmute All"
+    mode: parallel
+    sequence:
+      - service: media_player.volume_mute
+        target:
+          entity_id:
+            - media_player.family_room
+            - media_player.kitchen
+            - media_player.bar
+            - media_player.patio
+            - media_player.roam2
+        data: { is_volume_muted: false }
+
+  sonos_announce:
+    alias: "Sonos - Announce"
+    mode: restart
+    fields:
+      players:
+        description: One or more media_player.*
+      message:
+        description: Text to speak
+      volume:
+        description: Optional temp volume (0.0..1.0)
+      tts_service:
+        description: TTS service (default tts.google_translate_say)
+    sequence:
+      - variables:
+          players_list: |
+            {% set candidate = players | default([], true) %}
+            {% if candidate is mapping and 'entity_id' in candidate %}
+              {% set candidate = candidate.entity_id %}
+            {% endif %}
+            {% if candidate is none %}
+              {% set items = [] %}
+            {% elif candidate is iterable and candidate is not string %}
+              {% set items = candidate | list %}
+            {% else %}
+              {% set items = [candidate] %}
+            {% endif %}
+            {% set ns = namespace(result=[]) %}
+            {% for item in items %}
+              {% if item is mapping and 'entity_id' in item %}
+                {% set inner = item.entity_id %}
+                {% if inner is iterable and inner is not string %}
+                  {% for entity in inner %}
+                    {% if entity is not none %}
+                      {% set ns.result = ns.result + [(entity | string)] %}
+                    {% endif %}
+                  {% endfor %}
+                {% elif inner is not none %}
+                  {% set ns.result = ns.result + [(inner | string)] %}
+                {% endif %}
+              {% elif item is iterable and item is not string %}
+                {% for entity in item %}
+                  {% if entity is not none %}
+                    {% set ns.result = ns.result + [(entity | string)] %}
+                  {% endif %}
+                {% endfor %}
+              {% elif item is not none %}
+                {% set ns.result = ns.result + [(item | string)] %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.result | list }}
+          tts: "{{ tts_service if tts_service is defined else 'tts.google_translate_say' }}"
+      - condition: template
+        value_template: "{{ players_list | length > 0 }}"
+      - service: script.sonos_snapshot
+        data:
+          players: "{{ players_list }}"
+      - choose:
+          - conditions: "{{ volume is defined }}"
+            sequence:
+              - repeat:
+                  for_each: "{{ players_list }}"
+                  sequence:
+                    - service: media_player.volume_set
+                      target:
+                        entity_id: "{{ repeat.item }}"
+                      data:
+                        volume_level: "{{ volume | float }}"
+      - service: "{{ tts }}"
+        target:
+          entity_id: "{{ players_list[0] }}"
+        data:
+          message: "{{ message }}"
+      - delay: "00:00:04"
+      - service: script.sonos_restore_snapshot
+        data:
+          players: "{{ players_list }}"
+
+  # ---------- GROUP PRESETS / TRANSFERS ----------
+  tv_plus_kitchen:
+    alias: "TV and Kitchen"
+    mode: single
+    sequence:
+      - service: script.sonos_group_with
+        data:
+          coordinator: media_player.family_room
+          members: [media_player.kitchen]
+      - service: media_player.volume_set
+        target: { entity_id: media_player.kitchen }
+        data: { volume_level: 0.10 }
+
+  tv_plus_bar:
+    alias: "TV and Bar"
+    mode: single
+    sequence:
+      - service: script.sonos_group_with
+        data:
+          coordinator: media_player.family_room
+          members: [media_player.bar]
+
+  tv_plus_patio:
+    alias: "TV and Patio"
+    mode: single
+    sequence:
+      - service: script.sonos_group_with
+        data:
+          coordinator: media_player.family_room
+          members: [media_player.patio]
+
+  tv_whole_house:
+    alias: "TV Whole House"
+    mode: single
+    sequence:
+      - service: script.sonos_group_with
+        data:
+          coordinator: media_player.family_room
+          members:
+            - media_player.kitchen
+            - media_player.bar
+            - media_player.patio
+            - media_player.roam2
+
+  move_tv_to_kitchen:
+    alias: "TV in Kitchen"
+    mode: single
+    sequence:
+      - choose:
+          - conditions: "{{ state_attr('media_player.family_room', 'source') == 'TV' }}"
+            sequence:
+              - choose:
+                  - conditions: "{{ states('script.tv_plus_kitchen') not in ['unknown', 'unavailable'] }}"
+                    sequence:
+                      - service: script.turn_on
+                        target:
+                          entity_id: script.tv_plus_kitchen
+                      - wait_template: >
+                          {{ state_attr('media_player.family_room', 'group_members') is defined
+                             and 'media_player.kitchen' in state_attr('media_player.family_room', 'group_members') }}
+                        timeout: "00:00:03"
+                        continue_on_timeout: true
+              - choose:
+                  - conditions: >
+                      {{ state_attr('media_player.family_room', 'group_members') is defined
+                         and 'media_player.kitchen' in state_attr('media_player.family_room', 'group_members') }}
+                    sequence: []
+                default:
+                  - service: script.sonos_group_with
+                    data:
+                      coordinator: media_player.family_room
+                      members:
+                        - media_player.kitchen
+              - service: media_player.volume_set
+                target: { entity_id: media_player.kitchen }
+                data: { volume_level: 0.10 }
+        default:
+          - service: script.sonos_move
+            data: { source: media_player.family_room, dest: media_player.kitchen }
+
+  move_kitchen_to_tv:
+    alias: "Move Kitchen to TV"
+    mode: single
+    sequence:
+      - service: script.sonos_move
+        data: { source: media_player.kitchen, dest: media_player.family_room }
+
+  move_tv_to_bar:
+    alias: "Move TV to Bar"
+    mode: single
+    sequence:
+      - service: script.sonos_move
+        data: { source: media_player.family_room, dest: media_player.bar }
+
+  move_bar_to_tv:
+    alias: "Move Bar to TV"
+    mode: single
+    sequence:
+      - service: script.sonos_move
+        data: { source: media_player.bar, dest: media_player.family_room }
+
+  move_tv_to_patio:
+    alias: "Move TV to Patio"
+    mode: single
+    sequence:
+      - service: script.sonos_move
+        data: { source: media_player.family_room, dest: media_player.patio }
+
+  move_patio_to_tv:
+    alias: "Move Patio to TV"
+    mode: single
+    sequence:
+      - service: script.sonos_move
+        data: { source: media_player.patio, dest: media_player.family_room }
+
+  # ---------- UNJOIN ----------
+  unjoin_kitchen:
+    alias: "Unjoin Kitchen"
+    mode: single
+    sequence:
+      - service: media_player.unjoin
+        target: { entity_id: media_player.kitchen }
+
+  unjoin_bar:
+    alias: "Unjoin Bar"
+    mode: single
+    sequence:
+      - service: media_player.unjoin
+        target: { entity_id: media_player.bar }
+
+  unjoin_patio:
+    alias: "Unjoin Patio"
+    mode: single
+    sequence:
+      - service: media_player.unjoin
+        target: { entity_id: media_player.patio }
+
+  unjoin_roam2:
+    alias: "Unjoin Roam2"
+    mode: single
+    sequence:
+      - service: media_player.unjoin
+        target: { entity_id: media_player.roam2 }
+
+  # ---------- KITCHEN AUDIO PICO CONTROLS ----------
+  pico_kitchen_tv_toggle:
+    alias: "Pico - Kitchen TV Toggle"
+    mode: single
+    sequence:
+      - choose:
+          # If kitchen is currently grouped with family_room (TV), unjoin it
+          - conditions:
+              - condition: template
+                value_template: >-
+                  {% set kitchen_group = state_attr('media_player.kitchen', 'group_members') | default([]) %}
+                  {% set family_room_group = state_attr('media_player.family_room', 'group_members') | default([]) %}
+                  {{ 'media_player.kitchen' in family_room_group or 'media_player.family_room' in kitchen_group }}
+            sequence:
+              - service: script.unjoin_kitchen
+              - service: persistent_notification.create
+                data:
+                  title: "Kitchen Sonos"
+                  message: "Disconnected from TV"
+          # Otherwise, connect kitchen to TV
+          default:
+            - service: script.tv_plus_kitchen
+            - service: persistent_notification.create
+              data:
+                title: "Kitchen Sonos"
+                message: "Connected to TV speakers"
+
+  pico_kitchen_volume_up:
+    alias: "Pico - Kitchen Volume Up"
+    mode: single
+    sequence:
+      - variables:
+          current: "{{ state_attr('media_player.kitchen', 'volume_level') | float(0.3) }}"
+          new_volume: "{{ [1.0, current + 0.03] | min }}"
+      - service: media_player.volume_set
+        target:
+          entity_id: media_player.kitchen
+        data:
+          volume_level: "{{ new_volume }}"
+
+  pico_kitchen_volume_down:
+    alias: "Pico - Kitchen Volume Down"
+    mode: single
+    sequence:
+      - variables:
+          current: "{{ state_attr('media_player.kitchen', 'volume_level') | float(0.3) }}"
+          new_volume: "{{ [0.0, current - 0.03] | max }}"
+      - service: media_player.volume_set
+        target:
+          entity_id: media_player.kitchen
+        data:
+          volume_level: "{{ new_volume }}"
+
+automation:
+  # ---------- KITCHEN AUDIO PICO AUTOMATIONS ----------
+  - alias: "Kitchen Audio Pico - Volume Up"
+    trigger:
+      - platform: device
+        device_id: "PJ2-3BRL-GXX-X01"
+        domain: lutron_caseta
+        type: press
+        subtype: up
+    action:
+      - service: script.pico_kitchen_volume_up
+
+  - alias: "Kitchen Audio Pico - Volume Down"  
+    trigger:
+      - platform: device
+        device_id: "PJ2-3BRL-GXX-X01"
+        domain: lutron_caseta
+        type: press
+        subtype: down
+    action:
+      - service: script.pico_kitchen_volume_down
+
+  - alias: "Kitchen Audio Pico - TV Toggle"
+    trigger:
+      - platform: device  
+        device_id: "PJ2-3BRL-GXX-X01"
+        domain: lutron_caseta
+        type: press
+        subtype: stop
+    action:
+      - service: script.pico_kitchen_tv_toggle
+
+# Rollback note: Sonos helpers reverted to previous snapshot logic for analysis.

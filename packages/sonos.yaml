@@ -208,13 +208,18 @@ script:
         example: media_player.family_room
       delta:
         description: "+/- change (0.07 or 7 for 7%)"
+      step_size:
+        description: "Custom step size (overrides default 7%)"
+        example: 3
+        default: 7
     sequence:
       - variables:
           cur: "{{ state_attr(player,'volume_level')|float(0.3) }}"
           step: >
             {% set d = delta %}
+            {% set custom_step = step_size | default(7) %}
             {% if d is number %}{{ d if d <= 1 else (d/100) }}
-            {% else %}{{ (d|float(7))/100 }}{% endif %}
+            {% else %}{{ (d|float(custom_step))/100 }}{% endif %}
           newv: "{{ [1, [0, cur + step]|max ]|min }}"
       - service: media_player.volume_set
         target: { entity_id: "{{ player }}" }
@@ -471,7 +476,7 @@ script:
           members: [media_player.kitchen]
       - service: media_player.volume_set
         target: { entity_id: media_player.kitchen }
-        data: { volume_level: 0.10 }
+        data: { volume_level: 0.05 }  # Changed from 0.10 to 0.05
 
   tv_plus_bar:
     alias: "TV and Bar"
@@ -508,38 +513,8 @@ script:
     alias: "TV in Kitchen"
     mode: single
     sequence:
-      - choose:
-          - conditions: "{{ state_attr('media_player.family_room', 'source') == 'TV' }}"
-            sequence:
-              - choose:
-                  - conditions: "{{ states('script.tv_plus_kitchen') not in ['unknown', 'unavailable'] }}"
-                    sequence:
-                      - service: script.turn_on
-                        target:
-                          entity_id: script.tv_plus_kitchen
-                      - wait_template: >
-                          {{ state_attr('media_player.family_room', 'group_members') is defined
-                             and 'media_player.kitchen' in state_attr('media_player.family_room', 'group_members') }}
-                        timeout: "00:00:03"
-                        continue_on_timeout: true
-              - choose:
-                  - conditions: >
-                      {{ state_attr('media_player.family_room', 'group_members') is defined
-                         and 'media_player.kitchen' in state_attr('media_player.family_room', 'group_members') }}
-                    sequence: []
-                default:
-                  - service: script.sonos_group_with
-                    data:
-                      coordinator: media_player.family_room
-                      members:
-                        - media_player.kitchen
-              - service: media_player.volume_set
-                target: { entity_id: media_player.kitchen }
-                data: { volume_level: 0.10 }
-        default:
-          - service: script.sonos_move
-            data: { source: media_player.family_room, dest: media_player.kitchen }
-
+      - service: script.tv_plus_kitchen
+     
   move_kitchen_to_tv:
     alias: "Move Kitchen to TV"
     mode: single
@@ -603,4 +578,82 @@ script:
     sequence:
       - service: media_player.unjoin
         target: { entity_id: media_player.roam2 }
+
+  # ---------- KITCHEN AUDIO PICO CONTROLS ----------
+  pico_kitchen_tv_toggle:
+    alias: "Pico - Kitchen TV Toggle"
+    mode: single
+    sequence:
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: >-
+                  {% set kitchen_group = state_attr('media_player.kitchen', 'group_members') | default([]) %}
+                  {% set family_room_group = state_attr('media_player.family_room', 'group_members') | default([]) %}
+                  {{ 'media_player.kitchen' in family_room_group or 'media_player.family_room' in kitchen_group }}
+            sequence:
+              - service: script.unjoin_kitchen
+              - service: persistent_notification.create
+                data:
+                  title: "Kitchen Sonos"
+                  message: "Disconnected from TV"
+        default:
+            - service: script.tv_plus_kitchen
+            - service: persistent_notification.create
+              data:
+                title: "Kitchen Sonos"
+                message: "Connected to TV speakers"
+
+  pico_kitchen_volume_up:
+    alias: "Pico - Kitchen Volume Up"
+    mode: single
+    sequence:
+      - variables:
+          current: "{{ state_attr('media_player.kitchen', 'volume_level') | float(0.3) }}"
+          new_volume: "{{ [1.0, current + 0.01] | min }}"  # Changed from 0.03 to 0.01
+      - service: media_player.volume_set
+        target:
+          entity_id: media_player.kitchen
+        data:
+          volume_level: "{{ new_volume }}"
+
+  pico_kitchen_volume_down:
+    alias: "Pico - Kitchen Volume Down"
+    mode: single
+    sequence:
+      - variables:
+          current: "{{ state_attr('media_player.kitchen', 'volume_level') | float(0.3) }}"
+          new_volume: "{{ [0.0, current - 0.01] | max }}"  # Changed from 0.03 to 0.01
+      - service: media_player.volume_set
+        target:
+          entity_id: media_player.kitchen
+        data:
+          volume_level: "{{ new_volume }}"
+
+automation:
+  # ---------- KITCHEN AUDIO PICO AUTOMATIONS ----------
+  - alias: "Kitchen Audio Pico - Volume Up"
+    trigger:
+      - platform: state
+        entity_id: event.kitchen_audio_pico_raise
+        to: 
+    action:
+      - service: script.pico_kitchen_volume_up
+
+  - alias: "Kitchen Audio Pico - Volume Down"  
+    trigger:
+      - platform: state
+        entity_id: event.kitchen_audio_pico_lower
+        to:
+    action:
+      - service: script.pico_kitchen_volume_down
+
+  - alias: "Kitchen Audio Pico - TV Toggle"
+    trigger:
+      - platform: state
+        entity_id: event.kitchen_audio_pico_stop
+        to:
+    action:
+      - service: script.pico_kitchen_tv_toggle
+
 # Rollback note: Sonos helpers reverted to previous snapshot logic for analysis.

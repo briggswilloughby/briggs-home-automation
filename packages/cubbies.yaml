@@ -15,6 +15,27 @@
 # LEARNING: Call the shelves helpers directly instead of templated services to avoid sandbox denials.
 # =============================================================================
 
+homeassistant:
+  customize:
+    script.cubbies_set_mode_tv:
+      google_assistant: true
+      google_assistant_name: "Cubbies TV mode"
+    script.cubbies_set_mode_chill:
+      google_assistant: true  
+      google_assistant_name: "Cubbies chill mode"
+    script.cubbies_set_mode_party:
+      google_assistant: true
+      google_assistant_name: "Cubbies party mode"
+    script.cubbies_set_mode_game_day:
+      google_assistant: true
+      google_assistant_name: "Cubbies game day mode"
+    script.cubbies_brighter:
+      google_assistant: true
+      google_assistant_name: "Cubbies brighter"
+    script.cubbies_dimmer:
+      google_assistant: true
+      google_assistant_name: "Cubbies dimmer"
+
 script:
 
   # ---- Cubbies Mode wrappers ----

@@ -260,125 +260,6 @@ def _parse_color(color):
     return rgb, label, extras
 
 
-async def _try_service_call(domain, service_name, max_attempts=3, backoff=0.12, **kwargs):
-    """Best-effort wrapper around service.call with retries and small backoff.
-
-    Returns True if the call was attempted without raising an exception, False otherwise.
-    """
-    attempt = 0
-    while attempt < max_attempts:
-        try:
-            service.call(domain, service_name, **kwargs)
-            return True
-        except Exception:
-            attempt += 1
-            try:
-                await task.sleep(backoff * attempt)
-            except Exception:
-                # If sleeping fails, continue immediately to retry
-                pass
-    return False
-
-
-async def _schedule_background(coro_or_func, *args, **kwargs):
-    """Schedule a coroutine or coroutine-function to run in background.
-
-    This helper tries, in order:
-      - pyscript.task.start(func, ...)
-      - asyncio.create_task(coro)
-      - as a last resort, await the coro in a tiny background task using
-        task.start to avoid blocking the caller.
-
-    Returns True if the background work was scheduled, False otherwise.
-    """
-    # If a callable (function/coroutine-function) was passed, prefer calling
-    # task.start(func, *args, **kwargs) which fits pyscript's task.start API.
-    try:
-        if callable(coro_or_func):
-            try:
-                task.start(coro_or_func, *args, **kwargs)
-                return True
-            except Exception:
-                pass
-
-            # If task.start didn't work, create the coroutine and try asyncio
-            try:
-                coro = coro_or_func(*args, **kwargs)
-            except Exception:
-                return False
-        else:
-            # a coroutine object was provided
-            coro = coro_or_func
-    except Exception:
-        return False
-
-    # Try asyncio.create_task for coroutine objects
-    try:
-        asyncio.create_task(coro)
-        return True
-    except Exception:
-        pass
-
-    # Last resort: wrap the coroutine and try task.start on the wrapper
-    try:
-        async def _runner(c):
-            try:
-                await c
-            except Exception:
-                pass
-
-        starter = _runner(coro)
-        try:
-            task.start(starter)
-            return True
-        except Exception:
-            return False
-    except Exception:
-        return False
-
-
-@service
-async def doorbell_diagnostics_py(entity_id: str | None = None):
-    """Return a small diagnostics payload for a given entity (best-effort).
-
-    Call from Developer Tools → Services and inspect logs or persistent notification.
-    """
-    if not entity_id:
-        # nothing to do
-        return
-    try:
-        st = state.get(entity_id)
-    except Exception:
-        st = None
-    try:
-        attrs = state.getattr(entity_id) or {}
-    except Exception:
-        attrs = {}
-
-    diag = {
-        "entity_id": entity_id,
-        "state": st,
-        "brightness": attrs.get("brightness"),
-        "rgbw_color": attrs.get("rgbw_color") or attrs.get("rgb_color") or attrs.get("hs_color"),
-        "effect": attrs.get("effect"),
-        "effect_list": list(attrs.get("effect_list") or []),
-        "color_mode": attrs.get("color_mode"),
-    }
-
-    # Create a persistent notification so it's easy to read from the UI
-    try:
-        service.call(
-            "persistent_notification",
-            "create",
-            title=f"Doorbell diag: {entity_id}",
-            message=str(diag),
-        )
-    except Exception:
-        pass
-    # Also return the dict for programmatic use
-    return diag
-
-
 def _resolve_entities(entity_ids):
     lights_with_brightness = []
     lights_without_brightness = []
@@ -482,9 +363,9 @@ def _categorize_color_lights(lights_with_brightness):
 
 @service
 async def doorbell_ring_py(
-    players="media_player.kitchen",  # Default to kitchen
+    players=None,
     chime_url=None,
-    chime_vol=0.2,
+    chime_vol=0.1,
     chime_len=None,
     flash_repeats=3,
     flash_on_time_ms=250,
@@ -497,50 +378,105 @@ async def doorbell_ring_py(
         global _doorbell_last_run
         now = monotonic()
         if guard > 0 and (now - _doorbell_last_run) < guard:
+            remaining = guard - (now - _doorbell_last_run)
+            # guard active; skipping (log removed to avoid potential template serialization issues)
             return
         _doorbell_last_run = now
 
-    # Use Kitchen as default if no players specified
-    if not players:
-        players = "media_player.kitchen"  # Set your Kitchen Sonos entity ID here
     player_ids = _normalize_targets(players)
+    
+    # Set default players if none provided
+    if not player_ids:
+        player_ids = ["media_player.kitchen", "media_player.patio"]
     
     wait_s = _parse_duration(chime_len)
     
-    # Build task list
-    tasks = []
+    # Set default chime URL if not provided
+    if chime_url is None:
+        chime_url = "http://192.168.68.86:8123/local/dingdong.mp3"
     
-    # Add flash task if enabled
+    sonos_tasks = []
+    for player in player_ids:
+        sonos_tasks.append(
+            sonos_doorbell_chime_py(
+                player=player,
+                media_url=chime_url,
+                volume=chime_vol,
+                wait_s=wait_s,
+            )
+        )
+
+    flash_tasks = []
     if _coerce_bool(flash_enabled):
-        flashes = max(0, int(float(flash_repeats or 0)))
+        flashes = 0
+        try:
+            flashes = int(float(flash_repeats))
+        except (TypeError, ValueError):
+            flashes = 0
         if flashes > 0:
-            brightness = _pct_to_brightness(flash_brightness_pct)
-            if brightness > 0:
+            flash_brightness = _pct_to_brightness(flash_brightness_pct)  # Renamed variable
+            if flash_brightness > 0:
                 on_ms = int(max(50, float(flash_on_time_ms or 0)))
-                tasks.append(shelves_flash(
+                # Pre-capture shelf states BEFORE starting tasks
+                shelf_original_states = {}
+                try:
+                    for light_id in _DEFAULT_SHELF_TARGETS:
+                        try:
+                            s = state.get(light_id)
+                            log.info(f"Capturing state for {light_id}: {s}")
+                            if s and s not in ("unavailable", "unknown"):
+                                # Capture all attributes with proper validation
+                                attrs = state.getattr(light_id) or {}
+                                orig_brightness = attrs.get("brightness")
+                                orig_rgbw_color = attrs.get("rgbw_color")  
+                                orig_rgb_color = attrs.get("rgb_color")
+                                orig_color_temp = attrs.get("color_temp")
+                                
+                                shelf_original_states[light_id] = {
+                                    'state': s,
+                                    'brightness': orig_brightness,
+                                    'rgbw_color': orig_rgbw_color,
+                                    'rgb_color': orig_rgb_color,
+                                    'color_temp': orig_color_temp,
+                                }
+                                log.info(f"Successfully captured state for {light_id}: state={s}, brightness={orig_brightness}, rgbw_color={orig_rgbw_color}")
+                        except Exception as e:
+                            log.error(f"Failed to capture state for {light_id}: {e}")
+                except Exception as e:
+                    log.error(f"State capture failed: {e}")
+
+                log.info(f"Total states captured: {len(shelf_original_states)}")
+                log.info(f"Captured states: {shelf_original_states}")
+                
+                # Validate state capture
+                if not shelf_original_states:
+                    log.warning("No original states captured - lights may not restore properly")
+
+                # Pass to flash function
+                flash_tasks.append(shelves_flash(
                     targets=_DEFAULT_SHELF_TARGETS,
                     flashes=flashes,
-                    brightness=brightness,
+                    brightness=flash_brightness,  # Use renamed variable
                     on_ms=on_ms,
                     off_ms=on_ms,
+                    original_states=shelf_original_states,
                 ))
 
-    # Add Sonos chime tasks
-    for player in player_ids:
-        tasks.append(sonos_doorbell_chime_py(
-            player=player,
-            media_url=chime_url,
-            volume=chime_vol,
-            wait_s=wait_s,
-        ))
+    # Await all coroutines explicitly
+    pending = []
+    for coro in sonos_tasks:
+        if coro is not None:
+            pending.append(coro)
+    for coro in flash_tasks:
+        if coro is not None:
+            pending.append(coro)
 
-    # Execute all tasks concurrently using task.start (fire-and-forget)
-    if tasks:
-        try:
-            for task_coro in tasks:
-                task.start(task_coro)
-        except Exception:
-            pass
+    if not pending:
+        # nothing to do (log removed to avoid potential template serialization issues)
+        return
+
+    # Ensure all are coroutines before gathering
+    await asyncio.gather(*(c for c in pending if hasattr(c, "__await__")))
 
 
 @service
@@ -610,155 +546,196 @@ async def shelves_flash(
     off_ms: int = 200,
     restore: bool = True,
     color=None,
+    original_states=None,
     **kwargs,
 ):
-    # Combine all target sources
-    raw_ids = []
-    for source in (targets, entity_id, targets_group):
-        raw_ids.extend(_normalize_targets(source))
-    for key in kwargs:
-        if isinstance(key, str) and key.startswith(("light.", "switch.", "group.")):
-            raw_ids.append(key)
-    if not raw_ids:
-        raw_ids = list(_DEFAULT_SHELF_TARGETS)
+    """Flash lights with manual on/off control (no device effects)"""
     
-    # Deduplicate
-    ids = []
-    seen_ids = set()
-    for candidate in raw_ids:
-        if candidate not in seen_ids:
-            ids.append(candidate)
-            seen_ids.add(candidate)
-
-    # Resolve entities and fail soft if nothing usable
-    lights_with_brightness, lights_without_brightness, switches, missing, unsupported = _resolve_entities(ids)
-    usable_ids = list(lights_with_brightness) + list(lights_without_brightness)
-    if not usable_ids:
-        try:
-            log.warning(f"shelves_flash: no usable light targets resolved from {ids}")
-        except Exception:
-            pass
+    log.info(f"shelves_flash called with targets={targets}, flashes={flashes}")
+    
+    # Fix the function call - remove extra arguments
+    ids = _normalize_targets(targets or entity_id or targets_group)
+    log.info(f"Normalized targets to: {ids}")
+    
+    if not ids:
+        log.error("No target entities found - exiting")
         return
-
-    flashes_value = max(1, int(flashes))
-    brightness_value = max(1, min(255, int(brightness)))
+    
+    # Check entity availability
+    for light_entity in ids:  # Renamed from entity_id
+        entity_state = state.get(light_entity)
+        log.info(f"Entity {light_entity} state: {entity_state}")
+    
+    # Convert timing
     on_s = max(0.05, float(on_ms) / 1000.0)
     off_s = max(0.05, float(off_ms) / 1000.0)
+    flashes_value = max(0, int(flashes))
+    brightness_value = max(1, min(255, int(brightness)))
     
-    if color is None:
-        color = kwargs.get("color")
-    rgb_color, color_label, extra_channels = _parse_color(color)
-
-    rgbw_color = list(rgb_color) + [extra_channels[0] if len(extra_channels) > 0 else 0]
+    log.info(f"Flash parameters: flashes={flashes_value}, on_s={on_s}, off_s={off_s}, brightness={brightness_value}")
     
-    await task.unique("shelves_flash", kill_me=True)
+    # Set flash color (red for doorbell)
+    rgbw_color = [255, 0, 0, 0] if color is None else color
+    log.info(f"Using color: {rgbw_color}")
     
-    # 1. CAPTURE ORIGINAL STATES (per entity)
-    original_states = {}
-    for entity in usable_ids:
+    # Capture original states if not provided
+    if original_states is None:
+        log.info("No pre-captured states provided, capturing now...")
+        original_states = {}
         try:
-            st = state.get(entity)
-            attrs = state.getattr(entity) or {}
-            original_states[entity] = {
-                'state': st,
-                'brightness': attrs.get('brightness'),
-                'rgbw_color': attrs.get('rgbw_color'),
-                'rgb_color': attrs.get('rgb_color'),
-                'effect': attrs.get('effect')
-            }
-        except Exception:
-            original_states[entity] = {'state': 'off'}
-
-    # 2. MANUAL FLASH SEQUENCE (no device effects)
+            for e in ids:
+                try:
+                    s = state.get(e)
+                    if s and s not in ("unavailable", "unknown"):
+                        # Use the same robust method
+                        attrs = state.getattr(e) or {}
+                        original_states[e] = {
+                            'state': s,
+                            'brightness': attrs.get("brightness"),
+                            'rgbw_color': attrs.get("rgbw_color"),
+                            'rgb_color': attrs.get("rgb_color"),
+                            'color_temp': attrs.get("color_temp"),
+                        }
+                        log.info(f"Backup captured state for {e}: {original_states[e]}")
+                except Exception as ex:
+                    log.error(f"Backup state capture failed for {e}: {ex}")
+        except Exception as ex:
+            log.error(f"Backup state capture failed: {ex}")
+        log.info(f"Backup total states captured: {len(original_states)}")
+    else:
+        log.info(f"Using pre-captured states: {len(original_states)} lights")
+    
+    # Manual flash sequence (no device effects)
+    log.info(f"Starting flash sequence: {flashes_value} flashes")
     for i in range(flashes_value):
+        log.info(f"Flash {i+1}/{flashes_value}: Turning on")
+        
         try:
-            log.info(f"shelves_flash: flash {i+1}/{flashes_value}")
-        except Exception:
-            pass
-            
-        # FLASH ON - explicit RGBW with no effects
-        service.call(
-            "light",
-            "turn_on",
-            entity_id=usable_ids,
-            brightness=brightness_value,
-            rgbw_color=rgbw_color,
-            effect="none"  # Explicitly disable effects
-        )
+            service.call(
+                "light",
+                "turn_on",
+                entity_id=ids,
+                brightness=brightness_value,
+                rgbw_color=rgbw_color,
+            )
+            log.info(f"Turn_on service call completed")
+        except Exception as e:
+            log.error(f"Turn_on failed: {e}")
+
         await task.sleep(on_s)
-        
-        # FLASH OFF
-        service.call(
-            "light",
-            "turn_off",
-            entity_id=usable_ids
-        )
-        
-        # Don't sleep after final flash
+
+        log.info(f"Flash {i+1}/{flashes_value}: Turning off")
+        try:
+            service.call(
+                "light",
+                "turn_off",
+                entity_id=ids,
+            )
+            log.info(f"Turn_off service call completed")
+        except Exception as e:
+            log.error(f"Turn_off failed: {e}")
+
         if i < flashes_value - 1:
             await task.sleep(off_s)
-
-    # 3. FORCED RESTORATION SEQUENCE
-    if restore:
-        # Step 1: Force all OFF to clear any lingering effects
-        service.call("light", "turn_off", entity_id=usable_ids)
-        await task.sleep(0.5)  # Let Shelly process
+    
+    log.info("Flash sequence completed")
+    
+    # Restore original states if requested
+    if restore and original_states:
+        log.info(f"Starting restoration for {len(original_states)} lights")
+        await task.sleep(0.2)  # Longer pause before restoration
         
-        # Step 2: Restore each light individually
-        for entity, orig_state in original_states.items():
+        # Restore each light individually (no bulk turn_off)
+        for entity_id, orig_state in original_states.items():
             try:
+                log.info(f"Restoring {entity_id} to state: {orig_state['state']}")
                 if orig_state['state'] == 'on':
-                    service_data = {
-                        'entity_id': entity,
-                        'effect': 'none'  # Force no effects
-                    }
+                    restore_data = {"entity_id": entity_id}
                     
-                    # Restore brightness
                     if orig_state.get('brightness'):
-                        service_data['brightness'] = orig_state['brightness']
-                    
-                    # Restore color (prefer rgbw_color)
+                        restore_data['brightness'] = orig_state['brightness']
+                        log.info(f"Restoring brightness: {orig_state['brightness']}")
                     if orig_state.get('rgbw_color'):
-                        service_data['rgbw_color'] = orig_state['rgbw_color']
+                        restore_data['rgbw_color'] = orig_state['rgbw_color']
+                        log.info(f"Restoring rgbw_color: {orig_state['rgbw_color']}")
                     elif orig_state.get('rgb_color'):
-                        service_data['rgb_color'] = orig_state['rgb_color']
+                        restore_data['rgb_color'] = orig_state['rgb_color']
+                        log.info(f"Restoring rgb_color: {orig_state['rgb_color']}")
+                    if orig_state.get('color_temp'):
+                        restore_data['color_temp'] = orig_state['color_temp']
                     
-                    service.call("light", "turn_on", **service_data)
-                    await task.sleep(0.15)  # Brief pause between lights
-                # If original was 'off', leave it off (already handled above)
-            except Exception:
-                pass  # Best effort restoration
-
-
+                    service.call("light", "turn_on", **restore_data)
+                    log.info(f"Restoration service call completed for {entity_id}")
+                else:
+                    service.call("light", "turn_off", entity_id=entity_id)
+                    log.info(f"Turned off {entity_id} (was originally off)")
+                    
+                await task.sleep(0.3)  # Longer delay between restorations
+            except Exception as e:
+                log.error(f"Restoration failed for {entity_id}: {e}")
+        
+        log.info("Restoration sequence completed")
+        
 @service
-async def sonos_doorbell_chime_py(player=None, media_url=None, volume=None, wait_s=None):
-    """Direct Sonos chime call (bypasses script.sonos_chime)"""
-    if not player:
+async def sonos_doorbell_chime_py(
+    player: str | None = None,
+    media_url: str | None = None,
+    volume: float = 0.3,
+    wait_s: float | None = None,
+):
+    wait_value = _parse_duration(wait_s)
+    
+    # Set default URL if not provided
+    if media_url is None:
+        media_url = "http://192.168.68.86:8123/local/dingdong.mp3"
+        
+    if not (player and media_url):
         return
 
-    uri = media_url or "http://192.168.68.86:8123/local/dingdong.mp3"
+    # Snapshot simple state (volume + playing state) — best-effort
+    try:
+        attrs = state.getattr(player) or {}
+        prev_volume = attrs.get("volume_level")
+    except Exception:
+        prev_volume = None
+    try:
+        prev_state = state.get(player)
+    except Exception:
+        prev_state = None
 
     try:
-        log.info(f"sonos_doorbell_chime_py: playing {uri} on {player}")
-        
-        # Set volume if specified
-        if volume is not None:
-            service.call("media_player", "volume_set", 
-                        entity_id=player, 
-                        volume_level=float(volume))
-            await task.sleep(0.2)
-        
-        # Play the chime
-        service.call("media_player", "play_media", 
-                    entity_id=player, 
-                    media_content_id=uri, 
-                    media_content_type="music")
-        
-        log.info(f"sonos_doorbell_chime_py: play_media called successfully")
-        
-    except Exception as e:
-        try:
-            log.error(f"sonos_doorbell_chime_py failed: {e}")
-        except Exception:
-            pass
+        service.call(
+            "media_player",
+            "volume_set",
+            entity_id=player,
+            volume_level=volume,
+        )
+        service.call(
+            "media_player",
+            "play_media",
+            entity_id=player,
+            media_content_id=_safe_str(media_url, ""),
+            media_content_type="music",
+        )
+    except Exception:
+        # avoid raising errors from media calls
+        pass
+
+    if wait_value:
+        await task.sleep(wait_value)
+
+    # Restore previous volume and attempt to resume playback if it was playing
+    try:
+        if prev_volume is not None:
+            service.call(
+                "media_player",
+                "volume_set",
+                entity_id=player,
+                volume_level=float(prev_volume),
+            )
+        if prev_state == "playing":
+            # Try to resume — best-effort; Sonos may not restore queued media automatically
+            service.call("media_player", "media_play", entity_id=player)
+    except Exception:
+        pass
 
